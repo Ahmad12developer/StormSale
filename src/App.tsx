@@ -54,13 +54,30 @@ class ErrorBoundary extends React.Component<
 }
 
 function Router() {
-  const { isConnected } = useWeb3();
-  const [currentPage, setCurrentPage] = useState("dashboard");
+  const { isConnected, connectWallet } = useWeb3();
+  const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("page") || "dashboard";
+    }
+    return "dashboard";
+  });
+
+  const isMock =
+    typeof window !== "undefined" &&
+    (new URLSearchParams(window.location.search).get("mock") === "true" ||
+      new URLSearchParams(window.location.search).get("page") !== null);
+
+  React.useEffect(() => {
+    if (isMock && !isConnected) {
+      connectWallet("mock").catch(() => {});
+    }
+  }, [isMock, isConnected, connectWallet]);
 
   return (
     <>
       <ConnectWalletModal />
-      {!isConnected ? (
+      {!isConnected && !isMock ? (
         <Landing />
       ) : (
         <div className="min-h-screen bg-background">

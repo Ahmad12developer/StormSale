@@ -13,7 +13,13 @@ interface AffiliateProps {
 }
 
 const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("tab") || "overview";
+    }
+    return "overview";
+  });
 
   const tabs = [
     { id: "overview", label: "Dashboard Overview", icon: LayoutDashboard },
