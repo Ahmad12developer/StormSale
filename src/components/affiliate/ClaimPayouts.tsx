@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { DollarSign, Zap, Clock, CheckCircle2 } from "lucide-react";
+import { getStellarExplorerLink } from "../../utils/network";
 
 interface ClaimableSale {
   id: number;
@@ -43,10 +44,24 @@ export const ClaimPayouts = () => {
       });
 
       const res = await claimPayoutOnChain(saleId);
+      const targetSale = mockClaimableSales.find((s) => s.id === saleId);
+      const txHash = res.txHash || `stellar-tx-${Date.now().toString(16)}`;
+      const receiptUrl = res.txHash ? getStellarExplorerLink("tx", res.txHash) : undefined;
+
       showNotification({
         type: "success",
         title: "Commission Paid Out!",
         message: `Settled on Stellar ledger. Tx: ${res.txHash ? res.txHash.slice(0, 10) + "..." : "Confirmed"}`,
+        confetti: true,
+        receiptUrl,
+        receipt: {
+          txHash,
+          amount: targetSale ? `${targetSale.commissionAmount} XLM` : "10.0 XLM",
+          saleId,
+          campaign: targetSale ? targetSale.campaignAddress : "CA7QW5KXGPTR4N2K9J2...",
+          date: new Date().toLocaleString(),
+          explorerUrl: receiptUrl,
+        },
       });
     } catch (err: any) {
       showNotification({
