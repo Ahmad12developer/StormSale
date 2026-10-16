@@ -52,7 +52,13 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
   const cvrTrendDelta = conversionData?.summary.cvrTrendDelta ?? 0;
   const cvrTrendDirection = conversionData?.summary.cvrTrendDirection ?? "neutral";
 
-  const stats = [
+  const stats: Array<{
+    title: string;
+    value: string;
+    change?: string;
+    trend?: "up" | "down" | "neutral";
+    icon: any;
+  }> = [
     {
       title: "Total Earnings",
       value: isLoading
@@ -60,7 +66,6 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
         : conversionData
           ? `${conversionData.summary.totalEarnedXlm.toLocaleString()} XLM`
           : "0 XLM",
-      change: "+18% this month",
       icon: DollarSign,
     },
     {
@@ -70,7 +75,6 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
         : conversionData
           ? `${conversionData.summary.activeLinksCount}`
           : "0",
-      change: "+2 this week",
       icon: Users,
     },
     {
@@ -150,28 +154,30 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
                     <p className="text-2xl font-extrabold text-zinc-900 dark:text-white mt-2 mb-1">
                       {stat.value}
                     </p>
-                    <div className="flex items-center gap-1 mt-1">
-                      {stat.trend === "up" && (
-                        <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      )}
-                      {stat.trend === "down" && (
-                        <TrendingDown className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                      )}
-                      {stat.trend === "neutral" && (
-                        <Minus className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
-                      )}
-                      <p
-                        className={`text-xs font-semibold ${
-                          stat.trend === "up"
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : stat.trend === "down"
-                              ? "text-rose-600 dark:text-rose-400"
-                              : "text-indigo-600 dark:text-indigo-400"
-                        }`}
-                      >
-                        {stat.change}
-                      </p>
-                    </div>
+                    {stat.change && (
+                      <div className="flex items-center gap-1 mt-1">
+                        {stat.trend === "up" && (
+                          <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        )}
+                        {stat.trend === "down" && (
+                          <TrendingDown className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                        )}
+                        {stat.trend === "neutral" && (
+                          <Minus className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
+                        )}
+                        <p
+                          className={`text-xs font-semibold ${
+                            stat.trend === "up"
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : stat.trend === "down"
+                                ? "text-rose-600 dark:text-rose-400"
+                                : "text-indigo-600 dark:text-indigo-400"
+                          }`}
+                        >
+                          {stat.change}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div className="w-10 h-10 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-zinc-700 shrink-0">
                     <IconComponent className="w-5 h-5 text-zinc-900 dark:text-indigo-400" />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -38,6 +38,10 @@ import {
 } from "../../utils/api";
 import { useNotification } from "../../context/NotificationContext";
 
+const getErrorMessage = (err: unknown, fallback: string): string => {
+  return err instanceof Error && err.message ? err.message : fallback;
+};
+
 export const PerformanceAnalytics = () => {
   const { showNotification } = useNotification();
   const [links, setLinks] = useState<ActiveLinkAnalytics[]>([]);
@@ -47,11 +51,21 @@ export const PerformanceAnalytics = () => {
   const [timeRange, setTimeRange] = useState<"24h" | "7d" | "30d" | "all">("7d");
   const [simulatingId, setSimulatingId] = useState<string | null>(null);
 
+  const activeRangeRef = useRef(timeRange);
+
+  useEffect(() => {
+    activeRangeRef.current = timeRange;
+  }, [timeRange]);
+
   const loadData = useCallback(
     async (showToast = false, range: "24h" | "7d" | "30d" | "all" = timeRange) => {
       setIsSyncing(true);
       try {
         const data = await fetchAffiliateConversionData(undefined, range);
+        // Discard results for an obsolete time range
+        if (activeRangeRef.current !== range) {
+          return;
+        }
         setLinks(data.links);
         setSummary(data.summary);
         if (showToast) {
@@ -64,7 +78,9 @@ export const PerformanceAnalytics = () => {
       } catch (error) {
         console.error("Failed to sync conversion data:", error);
       } finally {
-        setIsSyncing(false);
+        if (activeRangeRef.current === range) {
+          setIsSyncing(false);
+        }
       }
     },
     [showNotification, timeRange],
@@ -92,11 +108,11 @@ export const PerformanceAnalytics = () => {
         message: "Referral link copied to clipboard.",
       });
       setTimeout(() => setCopiedId(null), 2000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       showNotification({
         type: "error",
         title: "Copy Failed",
-        message: err.message || "Could not copy link to clipboard.",
+        message: getErrorMessage(err, "Could not copy link to clipboard."),
       });
     }
   };
@@ -114,12 +130,12 @@ export const PerformanceAnalytics = () => {
         title: "Click Recorded",
         message: `New click tracked for ${updated.campaignName}. CVR updated to ${updated.conversionRate}%.`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error recording click:", error);
       showNotification({
         type: "error",
         title: "Recording Click Failed",
-        message: error.message || "Failed to record click.",
+        message: getErrorMessage(error, "Failed to record click."),
       });
     } finally {
       setSimulatingId(null);
@@ -139,12 +155,12 @@ export const PerformanceAnalytics = () => {
         message: `Sale registered for ${updated.campaignName}! CVR rose to ${updated.conversionRate}%.`,
         confetti: true,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error recording sale:", error);
       showNotification({
         type: "error",
         title: "Recording Sale Failed",
-        message: error.message || "Failed to record conversion.",
+        message: getErrorMessage(error, "Failed to record conversion."),
       });
     } finally {
       setSimulatingId(null);

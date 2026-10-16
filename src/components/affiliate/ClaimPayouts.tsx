@@ -86,7 +86,7 @@ export const ClaimPayouts = () => {
       );
       setSelectedIds([]);
 
-      const txHash = resultReceipt.txHash;
+      const txHash = resultReceipt.txHash || undefined;
       const receiptUrl = txHash ? getStellarExplorerLink("tx", txHash) : undefined;
 
       showNotification({
@@ -104,12 +104,12 @@ export const ClaimPayouts = () => {
           explorerUrl: receiptUrl,
         },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Batch claim failure:", err);
       showNotification({
         type: "error",
         title: "Batch Claim Failed",
-        message: err.message || "Failed to execute batch claim transaction.",
+        message: err instanceof Error ? err.message : "Failed to execute batch claim transaction.",
       });
     } finally {
       setIsBatchClaiming(false);
@@ -132,13 +132,15 @@ export const ClaimPayouts = () => {
         prev.map((c) => (c.campaignId === campaignId ? { ...c, status: "claimed" } : c)),
       );
 
-      const txHash = res.txHash || `stellar-tx-${Date.now().toString(16)}`;
-      const receiptUrl = res.txHash ? getStellarExplorerLink("tx", res.txHash) : undefined;
+      const txHash = res.txHash || undefined;
+      const receiptUrl = txHash ? getStellarExplorerLink("tx", txHash) : undefined;
 
       showNotification({
         type: "success",
         title: "Commission Paid Out!",
-        message: `Settled on Stellar ledger. Tx: ${res.txHash ? res.txHash.slice(0, 10) + "..." : "Confirmed"}`,
+        message: txHash
+          ? `Settled on Stellar ledger. Tx: ${txHash.slice(0, 10)}...`
+          : "Settled on Stellar ledger.",
         confetti: true,
         receiptUrl,
         receipt: {
@@ -150,11 +152,11 @@ export const ClaimPayouts = () => {
           explorerUrl: receiptUrl,
         },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       showNotification({
         type: "error",
         title: "Claim Failed",
-        message: err.message || "Failed to claim commission.",
+        message: err instanceof Error ? err.message : "Failed to claim commission.",
       });
     } finally {
       setClaimingId(null);
