@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Button } from "../../components/ui/button";
 import {
   Card,
@@ -42,18 +42,75 @@ import {
 
 export interface SaleRecord {
   id: number;
-  campaignId: number;
-  campaignName: string;
-  campaignAddress: string;
+  campaignId?: number;
+  campaignName?: string;
+  campaignAddress?: string;
   affiliate: string;
   saleAmount: string;
   commissionAmount: string;
   timestamp: number;
-  status: "claimed" | "pending" | "processing";
+  status?: "claimed" | "pending" | "processing";
   txHash?: string;
   ledgerSequence?: number;
   memo?: string;
   feeXlm?: string;
+  clearingPeriod?: number;
+  claimed?: boolean;
+}
+
+export type Sale = SaleRecord;
+
+export interface SalesListProps {
+  sales?: Sale[];
+}
+
+export const DEFAULT_CLEARING_PERIOD = 604800; // 7 days in seconds
+
+export function calculateClearing(
+  sale: Pick<Sale, "timestamp" | "clearingPeriod">,
+  nowSeconds: number,
+) {
+  const period =
+    typeof sale.clearingPeriod === "number" && sale.clearingPeriod > 0
+      ? sale.clearingPeriod
+      : DEFAULT_CLEARING_PERIOD;
+  const unlockTimestamp = sale.timestamp + period;
+  const remainingSeconds = Math.max(0, unlockTimestamp - nowSeconds);
+  const elapsedSeconds = Math.max(0, nowSeconds - sale.timestamp);
+  const rawProgress = Math.min(100, Math.max(0, Math.round((elapsedSeconds / period) * 100)));
+  // Never display 100% while countdown is still active; cap at 99% until remainingSeconds reaches zero
+  const progressPercent = remainingSeconds > 0 ? Math.min(99, rawProgress) : 100;
+  const isUnlocked = remainingSeconds === 0;
+
+  const days = Math.floor(remainingSeconds / 86400);
+  const hours = Math.floor((remainingSeconds % 86400) / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = Math.floor(remainingSeconds % 60);
+
+  let countdownText = "";
+  if (days > 0) {
+    countdownText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  } else if (hours > 0) {
+    countdownText = `${hours}h ${minutes}m ${seconds}s`;
+  } else if (minutes > 0) {
+    countdownText = `${minutes}m ${seconds}s`;
+  } else {
+    countdownText = `${seconds}s`;
+  }
+
+  const unlockUtc =
+    new Date(unlockTimestamp * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+
+  return {
+    period,
+    unlockTimestamp,
+    remainingSeconds,
+    elapsedSeconds,
+    progressPercent,
+    isUnlocked,
+    countdownText,
+    unlockUtc,
+  };
 }
 
 export type SortOption = "newest" | "oldest" | "highest_commission" | "highest_amount";
@@ -87,8 +144,9 @@ export function filterAndSortSales(
 
   return sales
     .filter((sale) => {
+      const currentStatus = sale.status || (sale.claimed ? "claimed" : "pending");
       // Status filter
-      if (statusFilter !== "all" && sale.status !== statusFilter) {
+      if (statusFilter !== "all" && currentStatus !== statusFilter) {
         return false;
       }
 
@@ -96,10 +154,11 @@ export function filterAndSortSales(
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchId = sale.id.toString().includes(query) || `#${sale.id}`.includes(query);
-        const matchCampaign = sale.campaignName.toLowerCase().includes(query);
-        const matchAddress = sale.campaignAddress.toLowerCase().includes(query);
+        const matchCampaign = sale.campaignName ? sale.campaignName.toLowerCase().includes(query) : false;
+        const matchAddress = sale.campaignAddress ? sale.campaignAddress.toLowerCase().includes(query) : false;
+        const matchAffiliate = sale.affiliate ? sale.affiliate.toLowerCase().includes(query) : false;
         const matchTx = sale.txHash ? sale.txHash.toLowerCase().includes(query) : false;
-        return matchId || matchCampaign || matchAddress || matchTx;
+        return matchId || matchCampaign || matchAddress || matchAffiliate || matchTx;
       }
 
       return true;
@@ -128,6 +187,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     commissionAmount: "10.0",
     timestamp: Math.floor(Date.now() / 1000 - 86400 * 2), // 2 days ago
     status: "claimed",
+    claimed: true,
+    clearingPeriod: 604800,
     txHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     ledgerSequence: 5184920,
     memo: "StormSale-Commission-#101",
@@ -143,6 +204,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     commissionAmount: "25.0",
     timestamp: Math.floor(Date.now() / 1000 - 86400 * 5), // 5 days ago
     status: "claimed",
+    claimed: true,
+    clearingPeriod: 604800,
     txHash: "8a6b12f45c9284d72856a9082cb348d2b295e4d94b08faec2389dc42a8b92d6e",
     ledgerSequence: 5182104,
     memo: "StormSale-Commission-#102",
@@ -158,6 +221,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     commissionAmount: "45.0",
     timestamp: Math.floor(Date.now() / 1000 - 86400 * 9), // 9 days ago
     status: "claimed",
+    claimed: true,
+    clearingPeriod: 604800,
     txHash: "3f9821a9c372e90b8417c469b4e1837920ab4d9528d84172f8a846102f9e54a1",
     ledgerSequence: 5179044,
     memo: "StormSale-Commission-#103",
@@ -173,6 +238,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     commissionAmount: "80.0",
     timestamp: Math.floor(Date.now() / 1000 - 86400 * 1), // 1 day ago
     status: "pending",
+    claimed: false,
+    clearingPeriod: 604800,
   },
   {
     id: 105,
@@ -184,6 +251,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     commissionAmount: "15.0",
     timestamp: Math.floor(Date.now() / 1000 - 3600 * 3), // 3 hours ago
     status: "processing",
+    claimed: false,
+    clearingPeriod: 604800,
     txHash: "f145c229987a02b489d8134bb8839217cae981274092b34914a821eef01492b4",
     ledgerSequence: 5188402,
     memo: "StormSale-Commission-#105",
@@ -191,10 +260,24 @@ export const SALES_LEDGER: SaleRecord[] = [
   },
 ];
 
-export const SalesList = () => {
+export const formatUtcTimestamp = (timestamp: number) =>
+  new Date(timestamp * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+
+export const formatTimestamp = (timestamp: number) => {
+  return new Date(timestamp * 1000).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => {
   const [decryptedData, setDecryptedData] = useState<object | null>(null);
   const [isDecryptDialogOpen, setIsDecryptDialogOpen] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
+  const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000));
 
   // Receipt Modal State
   const [selectedReceipt, setSelectedReceipt] = useState<SaleRecord | null>(null);
@@ -202,13 +285,22 @@ export const SalesList = () => {
 
   // Filter & Search State
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "claimed" | "pending" | "processing">(
-    "all",
-  );
+  const [statusFilter, setStatusFilter] = useState<"all" | "claimed" | "pending" | "processing">("all");
   const [sortBy, setSortBy] = useState<SortOption>("newest");
-  const [salesLedger, setSalesLedger] = useState<SaleRecord[]>(SALES_LEDGER);
+  const [salesLedger, setSalesLedger] = useState<SaleRecord[]>(() => initialSales || SALES_LEDGER);
 
   useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Math.floor(Date.now() / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (initialSales) {
+      setSalesLedger(initialSales);
+      return;
+    }
     const fetchSales = async () => {
       try {
         const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001/api";
@@ -224,7 +316,7 @@ export const SalesList = () => {
       }
     };
     fetchSales();
-  }, []);
+  }, [initialSales]);
 
   // Filtering and Searching using pure function
   const filteredSales = useMemo(() => {
@@ -235,13 +327,13 @@ export const SalesList = () => {
   const metrics = useMemo(() => {
     const totalVolume = salesLedger.reduce((acc, s) => acc + parseFloat(s.saleAmount), 0);
     const claimedCommission = salesLedger
-      .filter((s) => s.status === "claimed")
+      .filter((s) => s.status === "claimed" || s.claimed)
       .reduce((acc, s) => acc + parseFloat(s.commissionAmount), 0);
     const pendingCommission = salesLedger
-      .filter((s) => s.status === "pending" || s.status === "processing")
+      .filter((s) => !s.claimed && (s.status === "pending" || s.status === "processing"))
       .reduce((acc, s) => acc + parseFloat(s.commissionAmount), 0);
     const totalVerifiedClaims = salesLedger.filter(
-      (s) => s.status === "claimed" && s.txHash,
+      (s) => (s.status === "claimed" || s.claimed) && s.txHash,
     ).length;
 
     return {
@@ -291,11 +383,11 @@ export const SalesList = () => {
 
     const rows = filteredSales.map((s) => [
       escapeCsvField(s.id),
-      escapeCsvField(s.campaignName),
-      escapeCsvField(s.campaignAddress),
+      escapeCsvField(s.campaignName || "StormSale Campaign"),
+      escapeCsvField(s.campaignAddress || "N/A"),
       escapeCsvField(s.saleAmount),
       escapeCsvField(s.commissionAmount),
-      escapeCsvField(s.status),
+      escapeCsvField(s.status || (s.claimed ? "claimed" : "pending")),
       escapeCsvField(new Date(s.timestamp * 1000).toISOString()),
       escapeCsvField(s.txHash || "N/A"),
       escapeCsvField(s.ledgerSequence ?? "N/A"),
@@ -315,16 +407,6 @@ export const SalesList = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
-
-  const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp * 1000).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   return (
@@ -460,7 +542,7 @@ export const SalesList = () => {
                       : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                   }`}
                 >
-                  Claimed ({salesLedger.filter((s) => s.status === "claimed").length})
+                  Claimed ({salesLedger.filter((s) => s.status === "claimed" || s.claimed).length})
                 </button>
                 <button
                   onClick={() => setStatusFilter("pending")}
@@ -470,7 +552,7 @@ export const SalesList = () => {
                       : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                   }`}
                 >
-                  Pending ({salesLedger.filter((s) => s.status === "pending").length})
+                  Pending ({salesLedger.filter((s) => s.status === "pending" && !s.claimed).length})
                 </button>
                 <button
                   onClick={() => setStatusFilter("processing")}
@@ -529,7 +611,10 @@ export const SalesList = () => {
                       Commission
                     </TableHead>
                     <TableHead className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 py-4">
-                      Settlement Date
+                      Recorded (UTC)
+                    </TableHead>
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 py-4 min-w-[240px]">
+                      Clearing Countdown & Progress
                     </TableHead>
                     <TableHead className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 py-4">
                       Status
@@ -545,123 +630,197 @@ export const SalesList = () => {
                 <TableBody>
                   {filteredSales.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="py-12 text-center text-zinc-400 text-xs">
+                      <TableCell colSpan={8} className="py-12 text-center text-zinc-400 text-xs">
                         No transactions found matching your criteria.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredSales.map((sale) => (
-                      <TableRow
-                        key={sale.id}
-                        className="border-b border-slate-50 dark:border-zinc-900 hover:bg-slate-50/50 dark:hover:bg-zinc-900/30 transition-colors"
-                      >
-                        {/* Sale & Campaign */}
-                        <TableCell className="py-4 pl-6">
-                          <div className="flex flex-col">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-black text-xs text-zinc-900 dark:text-white">
-                                #{sale.id}
-                              </span>
-                              <span className="font-bold text-xs text-zinc-800 dark:text-zinc-200">
-                                {sale.campaignName}
+                    filteredSales.map((sale) => {
+                      const clearing = calculateClearing(sale, currentTime);
+                      const isClaimed = sale.claimed || sale.status === "claimed";
+
+                      return (
+                        <TableRow
+                          key={sale.id}
+                          className="border-b border-slate-50 dark:border-zinc-900 hover:bg-slate-50/50 dark:hover:bg-zinc-900/30 transition-colors"
+                        >
+                          {/* Sale & Campaign */}
+                          <TableCell className="py-4 pl-6">
+                            <div className="flex flex-col">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-black text-xs text-zinc-900 dark:text-white">
+                                  #{sale.id}
+                                </span>
+                                <span className="font-bold text-xs text-zinc-800 dark:text-zinc-200">
+                                  {sale.campaignName || "StormSale Campaign"}
+                                </span>
+                              </div>
+                              <span className="font-mono text-[11px] text-zinc-400 mt-0.5 truncate max-w-[180px]">
+                                {sale.campaignAddress || sale.affiliate}
                               </span>
                             </div>
-                            <span className="font-mono text-[11px] text-zinc-400 mt-0.5 truncate max-w-[180px]">
-                              {sale.campaignAddress}
-                            </span>
-                          </div>
-                        </TableCell>
+                          </TableCell>
 
-                        {/* Amount */}
-                        <TableCell className="font-semibold text-xs text-zinc-700 dark:text-zinc-300 py-4">
-                          {sale.saleAmount} XLM
-                        </TableCell>
+                          {/* Amount */}
+                          <TableCell className="font-semibold text-xs text-zinc-700 dark:text-zinc-300 py-4">
+                            {sale.saleAmount} XLM
+                          </TableCell>
 
-                        {/* Commission */}
-                        <TableCell className="font-extrabold text-xs text-indigo-600 dark:text-indigo-400 py-4">
-                          +{sale.commissionAmount} XLM
-                        </TableCell>
+                          {/* Commission */}
+                          <TableCell className="font-extrabold text-xs text-indigo-600 dark:text-indigo-400 py-4">
+                            +{sale.commissionAmount} XLM
+                          </TableCell>
 
-                        {/* Date */}
-                        <TableCell className="text-zinc-500 dark:text-zinc-400 text-xs font-medium py-4 whitespace-nowrap">
-                          {formatTimestamp(sale.timestamp)}
-                        </TableCell>
+                          {/* Recorded Date (UTC) */}
+                          <TableCell className="text-zinc-500 dark:text-zinc-400 text-xs font-mono py-4 whitespace-nowrap">
+                            {formatUtcTimestamp(sale.timestamp)}
+                          </TableCell>
 
-                        {/* Status */}
-                        <TableCell className="py-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                              sale.status === "claimed"
-                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
-                                : sale.status === "pending"
-                                  ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
-                                  : "bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-300"
-                            }`}
-                          >
-                            {sale.status === "claimed" ? (
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                            ) : sale.status === "pending" ? (
-                              <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                          {/* Clearing Countdown & Progress */}
+                          <TableCell className="py-4 min-w-[240px]">
+                            {isClaimed ? (
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Matured & Settled
+                                  </span>
+                                  <span className="font-mono text-zinc-400 text-[11px]">100%</span>
+                                </div>
+                                <div className="w-full bg-emerald-100 dark:bg-emerald-950/50 rounded-full h-2 overflow-hidden">
+                                  <div className="bg-emerald-500 h-full rounded-full w-full" />
+                                </div>
+                                <div className="text-[10px] text-zinc-400 font-mono">
+                                  Unlocked: {clearing.unlockUtc}
+                                </div>
+                              </div>
+                            ) : clearing.isUnlocked ? (
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Ready to Claim
+                                  </span>
+                                  <span className="font-mono text-indigo-500 text-[11px] font-bold">
+                                    100%
+                                  </span>
+                                </div>
+                                <div className="w-full bg-indigo-100 dark:bg-indigo-950/50 rounded-full h-2 overflow-hidden">
+                                  <div className="bg-indigo-600 h-full rounded-full w-full" />
+                                </div>
+                                <div className="text-[10px] text-indigo-500/80 dark:text-indigo-400/80 font-mono">
+                                  Clearing period completed
+                                </div>
+                              </div>
                             ) : (
-                              <RefreshCw className="w-3 h-3 text-purple-600 dark:text-purple-400 animate-spin" />
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1 font-mono">
+                                    <Clock className="w-3.5 h-3.5 animate-pulse text-amber-500" />
+                                    {clearing.countdownText}
+                                  </span>
+                                  <span className="font-mono text-zinc-500 dark:text-zinc-400 text-[11px] font-semibold">
+                                    {clearing.progressPercent}%
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-100 dark:bg-zinc-800 rounded-full h-2 overflow-hidden">
+                                  <div
+                                    className="bg-gradient-to-r from-amber-500 to-indigo-500 h-full rounded-full transition-all duration-500"
+                                    style={{
+                                      width: `${clearing.progressPercent}%`,
+                                    }}
+                                  />
+                                </div>
+                                <div className="flex justify-between items-center text-[10px] text-zinc-400 font-mono">
+                                  <span>Period: {Math.round(clearing.period / 86400)}d</span>
+                                  <span>Unlocks: {clearing.unlockUtc}</span>
+                                </div>
+                              </div>
                             )}
-                            {sale.status === "claimed"
-                              ? "Claimed"
-                              : sale.status === "pending"
-                                ? "Pending"
-                                : "Processing"}
-                          </span>
-                        </TableCell>
+                          </TableCell>
 
-                        {/* Block Explorer Link (#51) */}
-                        <TableCell className="py-4">
-                          {sale.txHash ? (
-                            <a
-                              href={getStellarExplorerLink("tx", sale.txHash)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 font-mono text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors group"
-                              title="View on Stellar Expert"
+                          {/* Status */}
+                          <TableCell className="py-4">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                isClaimed
+                                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                  : sale.status === "processing"
+                                    ? "bg-purple-100 text-purple-800 dark:bg-purple-500/20 dark:text-purple-300"
+                                    : clearing.isUnlocked
+                                      ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-400"
+                                      : "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                              }`}
                             >
-                              <span>
-                                {sale.txHash.slice(0, 6)}...{sale.txHash.slice(-4)}
-                              </span>
-                              <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                            </a>
-                          ) : (
-                            <span className="text-zinc-400 text-xs italic">In Clearing Escrow</span>
-                          )}
-                        </TableCell>
+                              {isClaimed ? (
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                              ) : sale.status === "processing" ? (
+                                <RefreshCw className="w-3 h-3 text-purple-600 dark:text-purple-400 animate-spin" />
+                              ) : clearing.isUnlocked ? (
+                                <CheckCircle2 className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                              ) : (
+                                <Clock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                              )}
+                              {isClaimed
+                                ? "Claimed"
+                                : sale.status === "processing"
+                                  ? "Processing"
+                                  : clearing.isUnlocked
+                                    ? "Unlocked"
+                                    : "In Clearing"}
+                            </span>
+                          </TableCell>
 
-                        {/* Actions: View Receipt (#51) & Decrypt */}
-                        <TableCell className="py-4 pr-6 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-2">
-                            {sale.status === "claimed" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setSelectedReceipt(sale)}
-                                className="rounded-lg h-8 px-3 font-semibold text-xs border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-all flex items-center gap-1"
+                          {/* Block Explorer Link (#51) */}
+                          <TableCell className="py-4">
+                            {sale.txHash ? (
+                              <a
+                                href={getStellarExplorerLink("tx", sale.txHash)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 font-mono text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors group"
+                                title="View on Stellar Expert"
                               >
-                                <Receipt className="w-3.5 h-3.5" />
-                                View Receipt
-                              </Button>
+                                <span>
+                                  {sale.txHash.slice(0, 6)}...{sale.txHash.slice(-4)}
+                                </span>
+                                <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                              </a>
+                            ) : (
+                              <span className="text-zinc-400 text-xs italic">In Clearing Escrow</span>
                             )}
+                          </TableCell>
 
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDecrypt(sale.id)}
-                              disabled={isDecrypting}
-                              className="rounded-lg h-8 px-3 font-semibold text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all flex items-center gap-1"
-                            >
-                              <Lock className="w-3.5 h-3.5" />
-                              {isDecrypting ? "Decrypting..." : "Decrypt"}
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
+                          {/* Actions: View Receipt (#51) & Decrypt */}
+                          <TableCell className="py-4 pr-6 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-2">
+                              {isClaimed && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelectedReceipt(sale)}
+                                  className="rounded-lg h-8 px-3 font-semibold text-xs border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-all flex items-center gap-1"
+                                >
+                                  <Receipt className="w-3.5 h-3.5" />
+                                  View Receipt
+                                </Button>
+                              )}
+
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDecrypt(sale.id)}
+                                disabled={isDecrypting}
+                                className="rounded-lg h-8 px-3 font-semibold text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all flex items-center gap-1"
+                              >
+                                <Lock className="w-3.5 h-3.5" />
+                                {isDecrypting ? "Decrypting..." : "Decrypt"}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -728,7 +887,7 @@ export const SalesList = () => {
                     Campaign
                   </span>
                   <p className="font-bold text-zinc-900 dark:text-white mt-0.5 truncate">
-                    {selectedReceipt.campaignName}
+                    {selectedReceipt.campaignName || "StormSale Campaign"}
                   </p>
                 </div>
                 <div>
@@ -782,7 +941,7 @@ export const SalesList = () => {
                     Campaign Source Contract
                   </span>
                   <p className="font-mono text-[11px] text-zinc-700 dark:text-zinc-300 bg-slate-50 dark:bg-zinc-950 p-2 rounded-xl border border-slate-100 dark:border-zinc-800 break-all">
-                    {selectedReceipt.campaignAddress}
+                    {selectedReceipt.campaignAddress || "N/A"}
                   </p>
                 </div>
                 <div>

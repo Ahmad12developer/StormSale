@@ -10,6 +10,8 @@ import { useWeb3 } from "./hooks/useWeb3";
 
 import { useState } from "react";
 import { ConnectWalletModal } from "./components/shared/ConnectWalletModal";
+import { BrandedCampaignView } from "./components/shared/BrandedCampaignView";
+import { loadBrandConfig } from "./lib/branding";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -62,6 +64,11 @@ function Router() {
     }
     return "dashboard";
   });
+  const [activeBrandSubdomain, setActiveBrandSubdomain] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("brand") || params.get("c") || null;
+  });
 
   const isMock =
     typeof window !== "undefined" &&
@@ -75,6 +82,19 @@ function Router() {
       });
     }
   }, [isMock, isConnected, connectWallet]);
+
+  if (activeBrandSubdomain) {
+    return (
+      <BrandedCampaignView
+        brandConfig={loadBrandConfig(activeBrandSubdomain)}
+        onClose={() => {
+          setActiveBrandSubdomain(null);
+          window.history.pushState({}, "", window.location.pathname);
+        }}
+        isStandalone
+      />
+    );
+  }
 
   return (
     <>
