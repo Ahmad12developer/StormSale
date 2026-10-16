@@ -29,6 +29,32 @@ import {
   type DisputeStatus,
 } from "../../utils/disputes";
 
+export function handleDisputeFileProcessing(
+  file: File,
+  callbacks: {
+    onError: (errorMsg: string) => void;
+    onSuccess: (validatedFile: File, previewUrl: string | null) => void;
+  },
+  customFileReader?: FileReader,
+): boolean {
+  const sizeValidation = validateDisputeAttachment(file.size);
+  if (!sizeValidation.valid) {
+    callbacks.onError(sizeValidation.error || "File size exceeds 5MB limit.");
+    return false;
+  }
+
+  if (file.type.startsWith("image/")) {
+    const reader = customFileReader || new FileReader();
+    reader.onload = () => {
+      callbacks.onSuccess(file, reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  } else {
+    callbacks.onSuccess(file, null);
+  }
+  return true;
+}
+
 export const IssueDisputeManager: React.FC<{
   isOpen: boolean;
   onClose: () => void;
@@ -86,32 +112,19 @@ export const IssueDisputeManager: React.FC<{
     setUploadError(null);
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-
-      // Validate size (< 5MB)
-      const sizeValidation = validateDisputeAttachment(file.size);
-      if (!sizeValidation.valid) {
-        setUploadError(sizeValidation.error || "File size exceeds 5MB limit.");
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-        return;
-      }
-
-      setUploadedFile(file);
-      currentFileRef.current = file;
-
-      // Create preview for images
-      if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = () => {
-          if (currentFileRef.current === file) {
-            setPreviewUrl(reader.result as string);
+      handleDisputeFileProcessing(file, {
+        onError: (errMsg) => {
+          setUploadError(errMsg);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
           }
-        };
-        reader.readAsDataURL(file);
-      } else {
-        setPreviewUrl(null);
-      }
+        },
+        onSuccess: (validatedFile, preview) => {
+          setUploadedFile(validatedFile);
+          currentFileRef.current = validatedFile;
+          setPreviewUrl(preview);
+        },
+      });
     }
   };
 

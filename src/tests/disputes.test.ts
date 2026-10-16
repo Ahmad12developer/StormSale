@@ -10,6 +10,7 @@ import {
   type DisputeCategory,
   type DisputeStatus,
 } from "../utils/disputes";
+import { handleDisputeFileProcessing } from "../components/affiliate/IssueDisputeManager";
 
 describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
   it("fetches the list of initial mock dispute reports", async () => {
@@ -82,19 +83,68 @@ describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
     });
   });
 
-  it("validates file attachment size constraint using exported validateDisputeAttachment", () => {
-    const validFileSize = 2.4 * 1024 * 1024;
-    const oversizedFileSize = 6.2 * 1024 * 1024;
-
-    const validResult = validateDisputeAttachment(validFileSize);
-    expect(validResult.valid).toBe(true);
-    expect(validResult.error).toBeUndefined();
-
-    const oversizedResult = validateDisputeAttachment(oversizedFileSize);
-    expect(oversizedResult.valid).toBe(false);
-    expect(oversizedResult.error).toContain("5MB");
-
+  it("validates file attachment size constraint under 5MB using component file handler", () => {
     expect(MAX_ATTACHMENT_SIZE_BYTES).toBe(5 * 1024 * 1024);
+    expect(validateDisputeAttachment(2.4 * 1024 * 1024).valid).toBe(true);
+    expect(validateDisputeAttachment(6.2 * 1024 * 1024).valid).toBe(false);
+
+    // 1. Valid image file (< 5MB) triggers FileReader and sets preview
+    let successFile: File | null = null;
+    let successPreview: string | null = null;
+    let errorMessage: string | null = null;
+
+    const validFile = new File(["sample image bytes"], "receipt.png", { type: "image/png" });
+    Object.defineProperty(validFile, "size", { value: 2.4 * 1024 * 1024 });
+
+    const mockFileReader = {
+      result: "data:image/png;base64,mockpreviewdata",
+      onload: null as ((this: FileReader, ev: ProgressEvent) => void) | null,
+      readAsDataURL: function (this: {
+        onload: ((this: FileReader, ev: ProgressEvent) => void) | null;
+      }) {
+        if (this.onload) {
+          this.onload.call(this as unknown as FileReader, {} as ProgressEvent);
+        }
+      },
+    } as unknown as FileReader;
+
+    const accepted = handleDisputeFileProcessing(
+      validFile,
+      {
+        onError: (err) => {
+          errorMessage = err;
+        },
+        onSuccess: (file, preview) => {
+          successFile = file;
+          successPreview = preview;
+        },
+      },
+      mockFileReader,
+    );
+
+    expect(accepted).toBe(true);
+    expect(errorMessage).toBeNull();
+    expect(successFile).toBe(validFile);
+    expect(successPreview).toBe("data:image/png;base64,mockpreviewdata");
+
+    // 2. Oversized file (> 5MB) is rejected by component validator and triggers onError
+    let rejectedError: string | null = null;
+    let rejectedFile: File | null = null;
+    const oversizedFile = new File(["oversized blob"], "large_log.mp4", { type: "video/mp4" });
+    Object.defineProperty(oversizedFile, "size", { value: 6.2 * 1024 * 1024 });
+
+    const rejected = handleDisputeFileProcessing(oversizedFile, {
+      onError: (err) => {
+        rejectedError = err;
+      },
+      onSuccess: (file) => {
+        rejectedFile = file;
+      },
+    });
+
+    expect(rejected).toBe(false);
+    expect(rejectedError).toContain("5MB");
+    expect(rejectedFile).toBeNull();
   });
 
   it("validates sale amount correctly and rejects invalid/negative values", () => {

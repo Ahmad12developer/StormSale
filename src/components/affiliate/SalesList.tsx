@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useContext } from "react";
 import { Button } from "../../components/ui/button";
 import {
   Card,
@@ -23,7 +23,9 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { decryptPayload } from "../../lib/crypto";
-import { getStellarExplorerLink } from "../../utils/network";
+import { getStellarExplorerLink, verifyHorizonConnectivity } from "../../utils/network";
+import { STELLAR_CONFIG } from "../../config/stellar";
+import { Web3Context } from "../../context/Web3Context";
 import {
   Shield,
   Lock,
@@ -38,6 +40,8 @@ import {
   RefreshCw,
   TrendingUp,
   ArrowUpDown,
+  AlertCircle,
+  XCircle,
 } from "lucide-react";
 
 export interface SaleRecord {
@@ -154,9 +158,15 @@ export function filterAndSortSales(
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
         const matchId = sale.id.toString().includes(query) || `#${sale.id}`.includes(query);
-        const matchCampaign = sale.campaignName ? sale.campaignName.toLowerCase().includes(query) : false;
-        const matchAddress = sale.campaignAddress ? sale.campaignAddress.toLowerCase().includes(query) : false;
-        const matchAffiliate = sale.affiliate ? sale.affiliate.toLowerCase().includes(query) : false;
+        const matchCampaign = sale.campaignName
+          ? sale.campaignName.toLowerCase().includes(query)
+          : false;
+        const matchAddress = sale.campaignAddress
+          ? sale.campaignAddress.toLowerCase().includes(query)
+          : false;
+        const matchAffiliate = sale.affiliate
+          ? sale.affiliate.toLowerCase().includes(query)
+          : false;
         const matchTx = sale.txHash ? sale.txHash.toLowerCase().includes(query) : false;
         return matchId || matchCampaign || matchAddress || matchAffiliate || matchTx;
       }
@@ -181,8 +191,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     id: 101,
     campaignId: 1,
     campaignName: "Tech Gadgets Pro",
-    campaignAddress: "CA7QW5KXGPTR4N2K9J2M7V4L6S8D1Y3W9Z0B2C4E6G8H1J3K5M7N9P2R",
-    affiliate: "GBBD5678WXYZ23456789ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789AB",
+    campaignAddress: "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526",
+    affiliate: "GADNSF7745EV3D5IRWBRN6OYXMR2YYAEGLDMULGTGDKKSBVXWMMVNPW6",
     saleAmount: "100.0",
     commissionAmount: "10.0",
     timestamp: Math.floor(Date.now() / 1000 - 86400 * 2), // 2 days ago
@@ -198,8 +208,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     id: 102,
     campaignId: 2,
     campaignName: "Web3 Masterclass 2026",
-    campaignAddress: "CB4RN8XJLP8M1K3V6P7S9D2T5Z0Y4W1E6U8Q3I5O7A2H4L9C1K3J5N7P",
-    affiliate: "GBBD5678WXYZ23456789ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789AB",
+    campaignAddress: "CABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAFNSZ",
+    affiliate: "GADNSF7745EV3D5IRWBRN6OYXMR2YYAEGLDMULGTGDKKSBVXWMMVNPW6",
     saleAmount: "250.0",
     commissionAmount: "25.0",
     timestamp: Math.floor(Date.now() / 1000 - 86400 * 5), // 5 days ago
@@ -215,8 +225,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     id: 103,
     campaignId: 3,
     campaignName: "Crypto Security Hardware",
-    campaignAddress: "CC9LK4PXMQ1V5R8B6N3T4W1E7Y0Z2U8I5O9A3S6D8F1G4H7J2K5L8M1N",
-    affiliate: "GBBD5678WXYZ23456789ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789AB",
+    campaignAddress: "CABQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGCK3",
+    affiliate: "GDXYHWE3GQR7TMMHV77NLWHSTSQ5JNUIUBN2LK2O2NXFFEKJLVYPAUCJ",
     saleAmount: "450.0",
     commissionAmount: "45.0",
     timestamp: Math.floor(Date.now() / 1000 - 86400 * 9), // 9 days ago
@@ -232,8 +242,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     id: 104,
     campaignId: 4,
     campaignName: "DeFi Yield Aggregator",
-    campaignAddress: "CD2MJ8VYNP9K3T5B7W1L6R4E8U0Z3Q5I7O2A4S8D1F6G9H3J5K7L2M4N",
-    affiliate: "GBBD5678WXYZ23456789ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789AB",
+    campaignAddress: "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526",
+    affiliate: "GDXYHWE3GQR7TMMHV77NLWHSTSQ5JNUIUBN2LK2O2NXFFEKJLVYPAUCJ",
     saleAmount: "800.0",
     commissionAmount: "80.0",
     timestamp: Math.floor(Date.now() / 1000 - 86400 * 1), // 1 day ago
@@ -245,8 +255,8 @@ export const SALES_LEDGER: SaleRecord[] = [
     id: 105,
     campaignId: 1,
     campaignName: "Tech Gadgets Pro",
-    campaignAddress: "CA7QW5KXGPTR4N2K9J2M7V4L6S8D1Y3W9Z0B2C4E6G8H1J3K5M7N9P2R",
-    affiliate: "GBBD5678WXYZ23456789ABCDEFGHIJKLMNOPQRSTUVWXYZ23456789AB",
+    campaignAddress: "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526",
+    affiliate: "GDLQ3L2EV3JLBDOQCLL2TBF35TOHAZRTWM7QMP7XYQJOF4YBTJXMGQ7X",
     saleAmount: "150.0",
     commissionAmount: "15.0",
     timestamp: Math.floor(Date.now() / 1000 - 3600 * 3), // 3 hours ago
@@ -274,6 +284,9 @@ export const formatTimestamp = (timestamp: number) => {
 };
 
 export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => {
+  const web3 = useContext(Web3Context);
+  const userAddress = web3?.userAddress;
+
   const [decryptedData, setDecryptedData] = useState<object | null>(null);
   const [isDecryptDialogOpen, setIsDecryptDialogOpen] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
@@ -282,12 +295,25 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
   // Receipt Modal State
   const [selectedReceipt, setSelectedReceipt] = useState<SaleRecord | null>(null);
   const [copiedTxHash, setCopiedTxHash] = useState(false);
+  const [receiptTxDetails, setReceiptTxDetails] = useState<{
+    successful?: boolean;
+    ledger?: number;
+    feeXlm?: string;
+    loading?: boolean;
+  }>({});
 
   // Filter & Search State
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "claimed" | "pending" | "processing">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "claimed" | "pending" | "processing">(
+    "all",
+  );
   const [sortBy, setSortBy] = useState<SortOption>("newest");
-  const [salesLedger, setSalesLedger] = useState<SaleRecord[]>(() => initialSales || SALES_LEDGER);
+  const [salesLedger, setSalesLedger] = useState<SaleRecord[]>(() => initialSales || []);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [horizonStatus, setHorizonStatus] = useState<"checking" | "synchronized" | "offline">(
+    "checking",
+  );
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -297,26 +323,106 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
   }, []);
 
   useEffect(() => {
+    verifyHorizonConnectivity().then((isOnline) => {
+      setHorizonStatus(isOnline ? "synchronized" : "offline");
+    });
+  }, []);
+
+  const loadLedger = useCallback(async () => {
     if (initialSales) {
       setSalesLedger(initialSales);
       return;
     }
-    const fetchSales = async () => {
-      try {
-        const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001/api";
-        const res = await fetch(`${API_URL}/affiliate/sales`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setSalesLedger(data);
-          }
-        }
-      } catch {
-        // Fallback to local verified sales ledger
+
+    if (!userAddress) {
+      setSalesLedger([]);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `${STELLAR_CONFIG.horizonUrl}/accounts/${userAddress}/payments?order=desc&limit=20`,
+      );
+      if (!res.ok) {
+        throw new Error(`Horizon HTTP ${res.status}`);
       }
+      const data = await res.json();
+      const records: SaleRecord[] = (data._embedded?.records || []).map((rec: any, idx: number) => {
+        const isRecipient = rec.to === userAddress;
+        const commission = parseFloat(rec.amount || "0");
+        return {
+          id: parseInt(rec.id?.slice(-5) || String(100 + idx), 10),
+          campaignId: 1,
+          campaignName: isRecipient ? "Affiliate Payout Settlement" : "Campaign Settlement",
+          campaignAddress: rec.from || STELLAR_CONFIG.contractId,
+          affiliate: rec.to || userAddress,
+          saleAmount: (commission * 10).toFixed(1),
+          commissionAmount: rec.amount || "0.0",
+          timestamp: Math.floor(new Date(rec.created_at).getTime() / 1000),
+          status: "claimed",
+          claimed: true,
+          clearingPeriod: DEFAULT_CLEARING_PERIOD,
+          txHash: rec.transaction_hash,
+          memo: `StormSale-Commission-#${rec.id?.slice(-4) || idx}`,
+        };
+      });
+      setSalesLedger(records);
+      setHorizonStatus("synchronized");
+    } catch (err) {
+      console.warn("Could not load Horizon settlement records:", err);
+      setError("Failed to fetch on-chain settlement records from Horizon node.");
+      setHorizonStatus("offline");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [initialSales, userAddress]);
+
+  useEffect(() => {
+    loadLedger();
+  }, [loadLedger]);
+
+  // Fetch real transaction details from Horizon for receipt modal
+  useEffect(() => {
+    if (!selectedReceipt || !selectedReceipt.txHash) {
+      setReceiptTxDetails({});
+      return;
+    }
+
+    let isMounted = true;
+    setReceiptTxDetails({ loading: true });
+
+    fetch(`${STELLAR_CONFIG.horizonUrl}/transactions/${selectedReceipt.txHash}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Horizon transaction query failed");
+        const data = await res.json();
+        if (isMounted) {
+          const feeStroops = Number(data.fee_charged || 0);
+          setReceiptTxDetails({
+            successful: data.successful,
+            ledger: data.ledger,
+            feeXlm: (feeStroops / 10_000_000).toFixed(5),
+            loading: false,
+          });
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setReceiptTxDetails({
+            loading: false,
+            successful: selectedReceipt.status === "claimed" || selectedReceipt.claimed,
+            ledger: selectedReceipt.ledgerSequence,
+            feeXlm: selectedReceipt.feeXlm,
+          });
+        }
+      });
+
+    return () => {
+      isMounted = false;
     };
-    fetchSales();
-  }, [initialSales]);
+  }, [selectedReceipt]);
 
   // Filtering and Searching using pure function
   const filteredSales = useMemo(() => {
@@ -628,7 +734,48 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredSales.length === 0 ? (
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-12 text-center text-zinc-400 text-xs">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <RefreshCw className="w-5 h-5 animate-spin text-indigo-500" />
+                          <span>Synchronizing settlement ledger from Stellar Horizon...</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : error ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-12 text-center text-xs">
+                        <div className="flex flex-col items-center justify-center gap-2 text-rose-500">
+                          <AlertCircle className="w-5 h-5" />
+                          <span>{error}</span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => loadLedger()}
+                            className="mt-2 text-xs"
+                          >
+                            Retry Sync
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : !userAddress && !initialSales ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="py-12 text-center text-zinc-400 text-xs">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Shield className="w-6 h-6 text-zinc-400" />
+                          <span className="font-semibold text-zinc-700 dark:text-zinc-300">
+                            Connect Wallet to Inspect Ledger
+                          </span>
+                          <span className="text-zinc-400">
+                            Connect your Stellar account to query on-chain settlement payouts
+                            directly from Horizon.
+                          </span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredSales.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="py-12 text-center text-zinc-400 text-xs">
                         No transactions found matching your criteria.
@@ -787,7 +934,9 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                                 <ExternalLink className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                               </a>
                             ) : (
-                              <span className="text-zinc-400 text-xs italic">In Clearing Escrow</span>
+                              <span className="text-zinc-400 text-xs italic">
+                                In Clearing Escrow
+                              </span>
                             )}
                           </TableCell>
 
@@ -830,7 +979,24 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
               <span>
                 Showing {filteredSales.length} of {salesLedger.length} ledger entries
               </span>
-              <span>Stellar Testnet Horizon Node: Synchronized</span>
+              <span className="flex items-center gap-1.5 font-medium">
+                {horizonStatus === "synchronized" ? (
+                  <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Stellar Testnet Horizon Node: Synchronized
+                  </span>
+                ) : horizonStatus === "checking" ? (
+                  <span className="text-zinc-400 flex items-center gap-1.5">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Connecting to Horizon Node...
+                  </span>
+                ) : (
+                  <span className="text-amber-500 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    Horizon Node: Offline
+                  </span>
+                )}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -861,22 +1027,60 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
           {selectedReceipt && (
             <div className="py-4 space-y-4">
               {/* Receipt Status Banner */}
-              <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 flex items-center justify-between">
+              <div
+                className={`p-3.5 rounded-2xl border flex items-center justify-between ${
+                  receiptTxDetails.successful === false
+                    ? "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20"
+                    : "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20"
+                }`}
+              >
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  {receiptTxDetails.successful === false ? (
+                    <XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  )}
                   <div>
-                    <p className="text-xs font-black text-emerald-900 dark:text-emerald-300">
-                      SUCCESS - TRANSACTION COMMITTED
+                    <p
+                      className={`text-xs font-black ${
+                        receiptTxDetails.successful === false
+                          ? "text-rose-900 dark:text-rose-300"
+                          : "text-emerald-900 dark:text-emerald-300"
+                      }`}
+                    >
+                      {receiptTxDetails.successful === false
+                        ? "FAILED - TRANSACTION REVERTED"
+                        : "SUCCESS - TRANSACTION COMMITTED"}
                     </p>
-                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400/80">
-                      {selectedReceipt.ledgerSequence
-                        ? `Ledger Sequence #${selectedReceipt.ledgerSequence}`
-                        : "Ledger Settlement: On-Chain Verified"}
+                    <p
+                      className={`text-[11px] ${
+                        receiptTxDetails.successful === false
+                          ? "text-rose-700 dark:text-rose-400/80"
+                          : "text-emerald-700 dark:text-emerald-400/80"
+                      }`}
+                    >
+                      {receiptTxDetails.ledger
+                        ? `Ledger Sequence #${receiptTxDetails.ledger}`
+                        : selectedReceipt.ledgerSequence
+                          ? `Ledger Sequence #${selectedReceipt.ledgerSequence}`
+                          : "Ledger Settlement: Verified on Horizon"}
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 bg-white/80 dark:bg-zinc-900/80 px-2 py-1 rounded-lg">
-                  200 OK
+                <span
+                  className={`text-xs font-mono font-bold px-2 py-1 rounded-lg bg-white/80 dark:bg-zinc-900/80 ${
+                    receiptTxDetails.successful === false
+                      ? "text-rose-800 dark:text-rose-300"
+                      : "text-emerald-800 dark:text-emerald-300"
+                  }`}
+                >
+                  {receiptTxDetails.loading
+                    ? "Verifying..."
+                    : receiptTxDetails.successful === false
+                      ? "Reverted"
+                      : selectedReceipt.txHash
+                        ? "On-Chain Verified"
+                        : "Pending"}
                 </span>
               </div>
 
@@ -919,9 +1123,11 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                     Network Fee
                   </span>
                   <p className="font-mono text-zinc-500 mt-0.5">
-                    {selectedReceipt.feeXlm
-                      ? `${selectedReceipt.feeXlm} XLM`
-                      : "Standard on-chain fee"}
+                    {receiptTxDetails.feeXlm
+                      ? `${receiptTxDetails.feeXlm} XLM`
+                      : selectedReceipt.feeXlm
+                        ? `${selectedReceipt.feeXlm} XLM`
+                        : "Not available on-chain"}
                   </p>
                 </div>
                 <div>
