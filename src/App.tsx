@@ -10,6 +10,8 @@ import { useWeb3 } from "./hooks/useWeb3";
 
 import { useState } from "react";
 import { ConnectWalletModal } from "./components/shared/ConnectWalletModal";
+import { BrandedCampaignView } from "./components/shared/BrandedCampaignView";
+import { loadBrandConfig } from "./lib/branding";
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -56,24 +58,43 @@ class ErrorBoundary extends React.Component<
 function Router() {
   const { isConnected, connectWallet } = useWeb3();
   const [currentPage, setCurrentPage] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("page") || "dashboard";
+    }
+    return "dashboard";
+  });
+  const [activeBrandSubdomain, setActiveBrandSubdomain] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
     const params = new URLSearchParams(window.location.search);
-    return params.get("page") || "dashboard";
+    return params.get("brand") || params.get("c") || null;
   });
 
+  const isMock =
+    typeof window !== "undefined" &&
+    Boolean(import.meta.env.DEV) &&
+    new URLSearchParams(window.location.search).get("mock") === "true";
+
   React.useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("mock") === "true" && !isConnected) {
+    if (isMock && !isConnected) {
       connectWallet("mock").catch((err) => {
-        console.error("Failed to auto-connect mock wallet in DEV:", err);
+        console.error("Mock wallet connection failed:", err);
       });
     }
-  }, [isConnected, connectWallet]);
+  }, [isMock, isConnected, connectWallet]);
 
-  const isMock =
-    Boolean(import.meta.env.DEV) &&
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("mock") === "true";
+  if (activeBrandSubdomain) {
+    return (
+      <BrandedCampaignView
+        brandConfig={loadBrandConfig(activeBrandSubdomain)}
+        onClose={() => {
+          setActiveBrandSubdomain(null);
+          window.history.pushState({}, "", window.location.pathname);
+        }}
+        isStandalone
+      />
+    );
+  }
 
   return (
     <>
