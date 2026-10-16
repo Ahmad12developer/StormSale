@@ -75,8 +75,18 @@ export const PerformanceAnalytics = () => {
             message: "Real-time conversion and CVR metrics synchronized with backend.",
           });
         }
-      } catch (error) {
+      } catch (error: unknown) {
         console.error("Failed to sync conversion data:", error);
+        if (showToast) {
+          showNotification({
+            type: "error",
+            title: "Sync Failed",
+            message: getErrorMessage(
+              error,
+              "Failed to synchronize conversion and CVR metrics with backend.",
+            ),
+          });
+        }
       } finally {
         if (activeRangeRef.current === range) {
           setIsSyncing(false);

@@ -256,5 +256,93 @@ describe("Affiliate Real-Time CVR & Conversion Analytics Suite (#52)", () => {
       expect(res1.clicks).toBe(initialClicks + 1);
       expect(res2.clicks).toBe(initialClicks + 2);
     });
+
+    it("rolls back click count to initial value when click recording fails", async () => {
+      const initial = await fetchAffiliateConversionData();
+      const link = initial.links[0];
+      const initialClicks = link.clicks;
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((url: string) => {
+          if (url.includes("/click")) {
+            return Promise.resolve({
+              ok: false,
+              status: 500,
+              json: async () => ({ error: "Internal Server Error" }),
+            });
+          }
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true }),
+          });
+        }),
+      );
+
+      await expect(recordLinkClick(link.id)).rejects.toThrow(
+        "Failed to record click: HTTP 500",
+      );
+
+      // Re-stub to success to verify that subsequent click proceeds from the reverted click count
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation(() =>
+          Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true }),
+          }),
+        ),
+      );
+
+      const recovered = await recordLinkClick(link.id);
+      expect(recovered.clicks).toBe(initialClicks + 1);
+    });
+
+    it("rolls back conversion count to initial value when conversion recording fails", async () => {
+      const initial = await fetchAffiliateConversionData();
+      const link = initial.links[0];
+      const initialConversions = link.conversions;
+      const initialRevenue = link.totalRevenueXlm;
+
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation((url: string) => {
+          if (url.includes("/conversion")) {
+            return Promise.resolve({
+              ok: false,
+              status: 500,
+              json: async () => ({ error: "Internal Server Error" }),
+            });
+          }
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true }),
+          });
+        }),
+      );
+
+      await expect(recordLinkConversion(link.id, 100)).rejects.toThrow(
+        "Failed to record conversion: HTTP 500",
+      );
+
+      // Re-stub to success to verify rollback preserved initial metrics
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation(() =>
+          Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true }),
+          }),
+        ),
+      );
+
+      const recovered = await recordLinkConversion(link.id, 100);
+      expect(recovered.conversions).toBe(initialConversions + 1);
+      expect(recovered.totalRevenueXlm).toBe(initialRevenue + 100);
+    });
   });
 });

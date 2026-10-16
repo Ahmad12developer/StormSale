@@ -13,7 +13,6 @@ import {
   Minus,
   Users,
   DollarSign,
-  Target,
   ArrowRight,
   CheckCircle2,
   BarChart3,
@@ -86,12 +85,6 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
       trend: cvrTrendDirection,
       icon: TrendingUp,
     },
-    {
-      title: "Monthly Goal",
-      value: "85%",
-      change: "On track",
-      icon: Target,
-    },
   ];
 
   const recentPayouts = [
@@ -137,7 +130,7 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {stats.map((stat, index) => {
           const IconComponent = stat.icon;
           return (

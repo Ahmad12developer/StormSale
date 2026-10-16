@@ -98,8 +98,7 @@ export const ClaimPayouts = () => {
         receipt: {
           txHash,
           amount: `${resultReceipt.totalClaimedXlm.toFixed(2)} XLM`,
-          saleId: selectedCampaigns[0]?.campaignId || 1,
-          campaign: selectedCampaigns[0]?.campaignName || "StormSale Batch Claim",
+          campaign: `Batch Claim (${resultReceipt.itemizedClaims.length} campaigns)`,
           date: new Date().toLocaleString(),
           explorerUrl: receiptUrl,
         },

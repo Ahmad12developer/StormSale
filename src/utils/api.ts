@@ -348,24 +348,6 @@ export const recordLinkClick = async (linkId: string): Promise<ActiveLinkAnalyti
         headers: { "Content-Type": "application/json" },
       });
       if (!res.ok) {
-        // Delta-based rollback: remove only the tentative click added in this operation
-        const idx = syncedLinksStore.findIndex((l) => l.id === linkId);
-        if (idx !== -1) {
-          const item = syncedLinksStore[idx];
-          const revertedClicks = Math.max(0, item.clicks - 1);
-          const revertedCVR = calculateCVR(item.conversions, revertedClicks);
-          const { trendDelta: revDelta, trendDirection: revDir } = calculateTrend(
-            revertedCVR,
-            baselinePeriodCVR,
-          );
-          syncedLinksStore[idx] = {
-            ...item,
-            clicks: revertedClicks,
-            conversionRate: revertedCVR,
-            trendDelta: revDelta,
-            trendDirection: revDir,
-          };
-        }
         throw new Error(`Failed to record click: HTTP ${res.status}`);
       }
     } catch (error) {
@@ -440,26 +422,6 @@ export const recordLinkConversion = async (
         body: JSON.stringify({ saleAmountXlm }),
       });
       if (!res.ok) {
-        // Delta-based rollback: remove only the tentative conversion added in this operation
-        const idx = syncedLinksStore.findIndex((l) => l.id === linkId);
-        if (idx !== -1) {
-          const item = syncedLinksStore[idx];
-          const revertedConversions = Math.max(0, item.conversions - 1);
-          const revertedCVR = calculateCVR(revertedConversions, item.clicks);
-          const { trendDelta: revDelta, trendDirection: revDir } = calculateTrend(
-            revertedCVR,
-            baselinePeriodCVR,
-          );
-          syncedLinksStore[idx] = {
-            ...item,
-            conversions: revertedConversions,
-            conversionRate: revertedCVR,
-            totalRevenueXlm: Math.max(0, item.totalRevenueXlm - saleAmountXlm),
-            commissionEarnedXlm: Math.max(0, item.commissionEarnedXlm - commission),
-            trendDelta: revDelta,
-            trendDirection: revDir,
-          };
-        }
         throw new Error(`Failed to record conversion: HTTP ${res.status}`);
       }
     } catch (error) {
