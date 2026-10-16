@@ -48,10 +48,10 @@ export const PerformanceAnalytics = () => {
   const [simulatingId, setSimulatingId] = useState<string | null>(null);
 
   const loadData = useCallback(
-    async (showToast = false) => {
+    async (showToast = false, range: "24h" | "7d" | "30d" | "all" = timeRange) => {
       setIsSyncing(true);
       try {
-        const data = await fetchAffiliateConversionData();
+        const data = await fetchAffiliateConversionData(undefined, range);
         setLinks(data.links);
         setSummary(data.summary);
         if (showToast) {
@@ -67,27 +67,38 @@ export const PerformanceAnalytics = () => {
         setIsSyncing(false);
       }
     },
-    [showNotification],
+    [showNotification, timeRange],
   );
 
   useEffect(() => {
-    loadData(false);
+    loadData(false, timeRange);
     // Real-time polling every 30 seconds
     const interval = setInterval(() => {
-      loadData(false);
+      loadData(false, timeRange);
     }, 30000);
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [loadData, timeRange]);
 
-  const handleCopyLink = (linkId: string, url: string) => {
-    navigator.clipboard.writeText(url);
-    setCopiedId(linkId);
-    showNotification({
-      type: "info",
-      title: "Link Copied",
-      message: "Referral link copied to clipboard.",
-    });
-    setTimeout(() => setCopiedId(null), 2000);
+  const handleCopyLink = async (linkId: string, url: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API not available in current environment");
+      }
+      await navigator.clipboard.writeText(url);
+      setCopiedId(linkId);
+      showNotification({
+        type: "info",
+        title: "Link Copied",
+        message: "Referral link copied to clipboard.",
+      });
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err: any) {
+      showNotification({
+        type: "error",
+        title: "Copy Failed",
+        message: err.message || "Could not copy link to clipboard.",
+      });
+    }
   };
 
   const handleSimulateClick = async (linkId: string) => {
@@ -96,15 +107,20 @@ export const PerformanceAnalytics = () => {
       const updated = await recordLinkClick(linkId);
       setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
       // Refresh summary
-      const data = await fetchAffiliateConversionData();
+      const data = await fetchAffiliateConversionData(undefined, timeRange);
       setSummary(data.summary);
       showNotification({
         type: "info",
         title: "Click Recorded",
         message: `New click tracked for ${updated.campaignName}. CVR updated to ${updated.conversionRate}%.`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error recording click:", error);
+      showNotification({
+        type: "error",
+        title: "Recording Click Failed",
+        message: error.message || "Failed to record click.",
+      });
     } finally {
       setSimulatingId(null);
     }
@@ -115,7 +131,7 @@ export const PerformanceAnalytics = () => {
     try {
       const updated = await recordLinkConversion(linkId, 100);
       setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
-      const data = await fetchAffiliateConversionData();
+      const data = await fetchAffiliateConversionData(undefined, timeRange);
       setSummary(data.summary);
       showNotification({
         type: "success",
@@ -123,8 +139,13 @@ export const PerformanceAnalytics = () => {
         message: `Sale registered for ${updated.campaignName}! CVR rose to ${updated.conversionRate}%.`,
         confetti: true,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error recording sale:", error);
+      showNotification({
+        type: "error",
+        title: "Recording Sale Failed",
+        message: error.message || "Failed to record conversion.",
+      });
     } finally {
       setSimulatingId(null);
     }
@@ -253,9 +274,6 @@ export const PerformanceAnalytics = () => {
                 <p className="text-3xl font-black text-zinc-900 dark:text-white mt-2 mb-1">
                   {summary ? summary.totalClicks.toLocaleString() : "0"}
                 </p>
-                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-2">
-                  +14.2% traffic growth
-                </p>
               </div>
               <div className="w-11 h-11 bg-blue-50 dark:bg-blue-500/10 rounded-2xl flex items-center justify-center border border-blue-100 dark:border-blue-500/20 text-blue-600 dark:text-blue-400">
                 <MousePointerClick className="w-5 h-5" />
@@ -278,9 +296,6 @@ export const PerformanceAnalytics = () => {
                 <p className="text-3xl font-black text-zinc-900 dark:text-white mt-2 mb-1">
                   {summary ? summary.totalConversions.toLocaleString() : "0"}
                 </p>
-                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-2">
-                  +18.9% completed sales
-                </p>
               </div>
               <div className="w-11 h-11 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center border border-emerald-100 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
                 <Target className="w-5 h-5" />
@@ -302,9 +317,6 @@ export const PerformanceAnalytics = () => {
                 </p>
                 <p className="text-3xl font-black text-zinc-900 dark:text-white mt-2 mb-1">
                   {summary ? `${summary.totalEarnedXlm.toLocaleString()} XLM` : "0 XLM"}
-                </p>
-                <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-2">
-                  100% Soroban escrow backed
                 </p>
               </div>
               <div className="w-11 h-11 bg-amber-50 dark:bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-100 dark:border-amber-500/20 text-amber-600 dark:text-amber-400">

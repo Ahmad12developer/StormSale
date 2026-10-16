@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { getStellarExplorerLink } from "../utils/network";
-import type { Notification, NotificationReceipt } from "../context/NotificationContext";
+import {
+  isRewardTitle,
+  type Notification,
+  type NotificationReceipt,
+} from "../context/NotificationContext";
 
 describe("Affiliate Claim Confirmation & Reward Toasts Suite (#53)", () => {
   describe("Receipt Data Modeling & Explorer Link Integration", () => {
@@ -51,22 +55,15 @@ describe("Affiliate Claim Confirmation & Reward Toasts Suite (#53)", () => {
       expect(notification.receiptUrl).toBeDefined();
     });
 
-    it("correctly identifies reward/claim toast characteristics", () => {
-      const isRewardTitle = (title: string) => {
-        const lower = title.toLowerCase();
-        return (
-          lower.includes("claim") ||
-          lower.includes("commission") ||
-          lower.includes("payout") ||
-          lower.includes("reward")
-        );
-      };
-
+    it("correctly identifies reward/claim toast characteristics using exported isRewardTitle", () => {
       expect(isRewardTitle("Commission Paid Out!")).toBe(true);
+      expect(isRewardTitle("commission earned")).toBe(true);
       expect(isRewardTitle("Claim Successful")).toBe(true);
+      expect(isRewardTitle("CLAIM PROCESSED")).toBe(true);
       expect(isRewardTitle("Payout Settled")).toBe(true);
       expect(isRewardTitle("Reward Unlocked")).toBe(true);
       expect(isRewardTitle("Normal Information")).toBe(false);
+      expect(isRewardTitle("System Error")).toBe(false);
     });
   });
 });

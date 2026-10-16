@@ -33,36 +33,52 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
     links: ActiveLinkAnalytics[];
     summary: ConversionAnalyticsSummary;
   } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchAffiliateConversionData().then((data) => {
-      setConversionData(data);
-    });
+    fetchAffiliateConversionData()
+      .then((data) => {
+        setConversionData(data);
+      })
+      .catch((err) => {
+        console.error("Failed to load conversion data:", err);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   }, []);
 
-  const overallCVR = conversionData?.summary.overallCVR ?? 4.28;
-  const cvrTrendDelta = conversionData?.summary.cvrTrendDelta ?? 0.8;
-  const cvrTrendDirection = conversionData?.summary.cvrTrendDirection ?? "up";
+  const overallCVR = conversionData?.summary.overallCVR ?? 0;
+  const cvrTrendDelta = conversionData?.summary.cvrTrendDelta ?? 0;
+  const cvrTrendDirection = conversionData?.summary.cvrTrendDirection ?? "neutral";
 
   const stats = [
     {
       title: "Total Earnings",
-      value: conversionData
-        ? `${conversionData.summary.totalEarnedXlm.toLocaleString()} XLM`
-        : "$12,847",
+      value: isLoading
+        ? "Loading..."
+        : conversionData
+          ? `${conversionData.summary.totalEarnedXlm.toLocaleString()} XLM`
+          : "0 XLM",
       change: "+18% this month",
       icon: DollarSign,
     },
     {
       title: "Active Campaigns",
-      value: conversionData ? `${conversionData.summary.activeLinksCount}` : "4",
+      value: isLoading
+        ? "..."
+        : conversionData
+          ? `${conversionData.summary.activeLinksCount}`
+          : "0",
       change: "+2 this week",
       icon: Users,
     },
     {
       title: "Conversion Rate (CVR)",
-      value: `${overallCVR}%`,
-      change: `${cvrTrendDelta >= 0 ? "+" : ""}${cvrTrendDelta}% vs benchmark`,
+      value: isLoading ? "..." : `${overallCVR.toFixed(2)}%`,
+      change: isLoading
+        ? "Loading..."
+        : `${cvrTrendDelta >= 0 ? "+" : ""}${cvrTrendDelta.toFixed(2)}% vs benchmark`,
       trend: cvrTrendDirection,
       icon: TrendingUp,
     },

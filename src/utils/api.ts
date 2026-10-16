@@ -167,18 +167,44 @@ export const fetchCampaign = async (campaignId: string) => {
  */
 export const fetchAffiliateConversionData = async (
   walletAddress?: string,
+  timeRange?: string,
 ): Promise<{
   links: ActiveLinkAnalytics[];
   summary: ConversionAnalyticsSummary;
 }> => {
+  let backendPreviousCVR: number | undefined;
   try {
-    const res = await fetch(
-      `${API_URL}/affiliate/conversions?wallet=${encodeURIComponent(walletAddress || "")}`,
-      { headers: { "Content-Type": "application/json" } },
-    );
+    const params = new URLSearchParams();
+    if (walletAddress) params.set("wallet", walletAddress);
+    if (timeRange) params.set("range", timeRange);
+    const queryString = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(`${API_URL}/affiliate/conversions${queryString}`, {
+      headers: { "Content-Type": "application/json" },
+    });
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data.links)) {
+      if (typeof data.summary?.previousOverallCVR === "number") {
+        backendPreviousCVR = data.summary.previousOverallCVR;
+      }
+      if (
+        Array.isArray(data.links) &&
+        data.links.every(
+          (l: unknown) =>
+            typeof l === "object" &&
+            l !== null &&
+            "id" in l &&
+            typeof (l as Record<string, unknown>).id === "string" &&
+            "clicks" in l &&
+            typeof (l as Record<string, unknown>).clicks === "number" &&
+            !isNaN((l as Record<string, unknown>).clicks as number) &&
+            "conversions" in l &&
+            typeof (l as Record<string, unknown>).conversions === "number" &&
+            !isNaN((l as Record<string, unknown>).conversions as number) &&
+            "conversionRate" in l &&
+            typeof (l as Record<string, unknown>).conversionRate === "number" &&
+            !isNaN((l as Record<string, unknown>).conversionRate as number),
+        )
+      ) {
         syncedLinksStore = data.links;
       }
     }
@@ -191,9 +217,21 @@ export const fetchAffiliateConversionData = async (
   const totalConversions = syncedLinksStore.reduce((acc, l) => acc + l.conversions, 0);
   const overallCVR = calculateCVR(totalConversions, totalClicks);
 
-  const prevTotalClicks = totalClicks - 1200;
-  const prevTotalConversions = totalConversions - 65;
-  const previousOverallCVR = calculateCVR(prevTotalConversions, prevTotalClicks);
+  const prevConversions = syncedLinksStore.reduce(
+    (acc, l) =>
+      acc +
+      (l.clicks > 0
+        ? (l.clicks *
+            (typeof l.previousConversionRate === "number"
+              ? l.previousConversionRate
+              : l.conversionRate)) /
+          100
+        : 0),
+    0,
+  );
+  const calculatedPrevCVR = calculateCVR(prevConversions, totalClicks);
+  const previousOverallCVR =
+    backendPreviousCVR !== undefined ? backendPreviousCVR : calculatedPrevCVR;
   const { trendDelta: cvrTrendDelta, trendDirection: cvrTrendDirection } = calculateTrend(
     overallCVR,
     previousOverallCVR,
@@ -254,12 +292,17 @@ export const recordLinkClick = async (linkId: string): Promise<ActiveLinkAnalyti
   syncedLinksStore[targetIndex] = updated;
 
   try {
-    await fetch(`${API_URL}/affiliate/links/${linkId}/click`, {
+    const res = await fetch(`${API_URL}/affiliate/links/${linkId}/click`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
-  } catch {
-    // Offline simulation continues seamlessly
+    if (!res.ok) {
+      syncedLinksStore[targetIndex] = current;
+      throw new Error(`Failed to record click: HTTP ${res.status}`);
+    }
+  } catch (error) {
+    syncedLinksStore[targetIndex] = current;
+    throw error;
   }
 
   return updated;
@@ -300,13 +343,18 @@ export const recordLinkConversion = async (
   syncedLinksStore[targetIndex] = updated;
 
   try {
-    await fetch(`${API_URL}/affiliate/links/${linkId}/conversion`, {
+    const res = await fetch(`${API_URL}/affiliate/links/${linkId}/conversion`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ saleAmountXlm }),
     });
-  } catch {
-    // Offline simulation continues seamlessly
+    if (!res.ok) {
+      syncedLinksStore[targetIndex] = current;
+      throw new Error(`Failed to record conversion: HTTP ${res.status}`);
+    }
+  } catch (error) {
+    syncedLinksStore[targetIndex] = current;
+    throw error;
   }
 
   return updated;

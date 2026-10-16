@@ -61,13 +61,17 @@ function Router() {
   });
 
   React.useEffect(() => {
+    if (!import.meta.env.DEV) return;
     const params = new URLSearchParams(window.location.search);
-    if ((params.get("mock") === "true" || params.get("page")) && !isConnected) {
-      connectWallet("mock");
+    if (params.get("mock") === "true" && !isConnected) {
+      connectWallet("mock").catch((err) => {
+        console.error("Failed to auto-connect mock wallet in DEV:", err);
+      });
     }
   }, [isConnected, connectWallet]);
 
   const isMock =
+    Boolean(import.meta.env.DEV) &&
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("mock") === "true";
 

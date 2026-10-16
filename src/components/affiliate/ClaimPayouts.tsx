@@ -34,9 +34,33 @@ export const ClaimPayouts = () => {
   const { showNotification } = useNotification();
   const [claimingId, setClaimingId] = useState<number | null>(null);
 
+  const mockClaimableSales: ClaimableSale[] = [
+    {
+      id: 1,
+      campaignAddress: "CA7QW5KXGPTR4N2K9J2M7V4QW5KXGPTR4N2K9J2M7V4QW5KXGPTR4N2K",
+      saleAmount: "100.0",
+      commissionAmount: "10.0",
+      timestamp: Date.now() / 1000 - 1209600,
+      clearingPeriod: 604800,
+    },
+    {
+      id: 2,
+      campaignAddress: "CB4RN8XJLP8M1K3V6P7M1K3V6P7M1K3V6P7M1K3V6P7M1K3V6P7M1K3V",
+      saleAmount: "250.0",
+      commissionAmount: "25.0",
+      timestamp: Date.now() / 1000 - 864000,
+      clearingPeriod: 604800,
+    },
+  ];
+
   const handleClaim = async (saleId: number) => {
     setClaimingId(saleId);
     try {
+      const targetSale = mockClaimableSales.find((s) => s.id === saleId);
+      if (!targetSale) {
+        throw new Error(`Sale #${saleId} not found in claimable ledger.`);
+      }
+
       showNotification({
         type: "info",
         title: "Claiming Commission",
@@ -44,7 +68,6 @@ export const ClaimPayouts = () => {
       });
 
       const res = await claimPayoutOnChain(saleId);
-      const targetSale = mockClaimableSales.find((s) => s.id === saleId);
       const txHash = res.txHash || `stellar-tx-${Date.now().toString(16)}`;
       const receiptUrl = res.txHash ? getStellarExplorerLink("tx", res.txHash) : undefined;
 
@@ -56,9 +79,9 @@ export const ClaimPayouts = () => {
         receiptUrl,
         receipt: {
           txHash,
-          amount: targetSale ? `${targetSale.commissionAmount} XLM` : "10.0 XLM",
-          saleId,
-          campaign: targetSale ? targetSale.campaignAddress : "CA7QW5KXGPTR4N2K9J2...",
+          amount: `${targetSale.commissionAmount} XLM`,
+          saleId: targetSale.id,
+          campaign: targetSale.campaignAddress,
           date: new Date().toLocaleString(),
           explorerUrl: receiptUrl,
         },
@@ -73,25 +96,6 @@ export const ClaimPayouts = () => {
       setClaimingId(null);
     }
   };
-
-  const mockClaimableSales: ClaimableSale[] = [
-    {
-      id: 1,
-      campaignAddress: "CA7QW5KXGPTR4N2K9J2...",
-      saleAmount: "100.0",
-      commissionAmount: "10.0",
-      timestamp: Date.now() / 1000 - 1209600,
-      clearingPeriod: 604800,
-    },
-    {
-      id: 2,
-      campaignAddress: "CB4RN8XJLP8M1K3V6P7...",
-      saleAmount: "250.0",
-      commissionAmount: "25.0",
-      timestamp: Date.now() / 1000 - 864000,
-      clearingPeriod: 604800,
-    },
-  ];
 
   const isSaleClaimable = (sale: ClaimableSale) => {
     return Date.now() / 1000 >= sale.timestamp + sale.clearingPeriod;

@@ -114,7 +114,7 @@ export const Confetti: React.FC<ConfettiProps> = ({ active, duration = 3500, onC
       const elapsed = currentTime - startTime;
       const progress = elapsed / duration;
 
-      ctx.clearRect(0, 0, width, height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       particles.forEach((p) => {
         // Physics update
@@ -151,7 +151,7 @@ export const Confetti: React.FC<ConfettiProps> = ({ active, duration = 3500, onC
       if (progress < 1) {
         animationFrameId = requestAnimationFrame(animate);
       } else {
-        ctx.clearRect(0, 0, width, height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (onComplete) onComplete();
       }
     };

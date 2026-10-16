@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import type { ReactNode } from "react";
 import {
   CheckCircle2,
@@ -56,17 +56,43 @@ export interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
+export const isRewardTitle = (title: string): boolean => {
+  const lower = title.toLowerCase();
+  return (
+    lower.includes("claim") ||
+    lower.includes("commission") ||
+    lower.includes("payout") ||
+    lower.includes("reward")
+  );
+};
+
 export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [confettiActive, setConfettiActive] = useState(false);
   const [activeReceipt, setActiveReceipt] = useState<NotificationReceipt | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerConfetti = useCallback(() => {
+    if (confettiTimerRef.current) {
+      clearTimeout(confettiTimerRef.current);
+    }
     setConfettiActive(false);
-    setTimeout(() => {
+    confettiTimerRef.current = setTimeout(() => {
       setConfettiActive(true);
     }, 10);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (confettiTimerRef.current) {
+        clearTimeout(confettiTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleConfettiComplete = useCallback(() => {
+    setConfettiActive(false);
   }, []);
 
   const openReceiptModal = useCallback((receipt: NotificationReceipt) => {
@@ -88,11 +114,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       // Trigger celebratory confetti animation on success if requested or if it's a claim/reward
       const isClaimSuccess =
         notification.confetti ||
-        (notification.type === "success" &&
-          (notification.title.toLowerCase().includes("claim") ||
-            notification.title.toLowerCase().includes("commission") ||
-            notification.title.toLowerCase().includes("payout") ||
-            notification.title.toLowerCase().includes("reward")));
+        (notification.type === "success" && isRewardTitle(notification.title));
 
       if (isClaimSuccess) {
         triggerConfetti();
@@ -119,7 +141,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
       }}
     >
       {children}
-      <Confetti active={confettiActive} onComplete={() => setConfettiActive(false)} />
+      <Confetti active={confettiActive} onComplete={handleConfettiComplete} />
       <NotificationContainer />
       <ReceiptModal
         receipt={activeReceipt}
@@ -271,13 +293,27 @@ const ReceiptModal: React.FC<{
   onClose: () => void;
 }> = ({ receipt, isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
 
   if (!receipt) return null;
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard access error handled gracefully
+    }
   };
 
   const explorerLink =

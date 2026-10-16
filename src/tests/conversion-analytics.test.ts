@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   calculateCVR,
   calculateTrend,
@@ -8,6 +8,29 @@ import {
 } from "../utils/api";
 
 describe("Affiliate Real-Time CVR & Conversion Analytics Suite (#52)", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/click") || url.includes("/conversion")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ success: true }),
+          });
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: async () => ({ error: "Not found" }),
+        });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   describe("Mathematical CVR (Click-to-Sale Ratio) Calculations", () => {
     it("calculates exact click-to-sale percentage correctly", () => {
       // 50 sales out of 1000 clicks = 5.0%
@@ -119,10 +142,14 @@ describe("Affiliate Real-Time CVR & Conversion Analytics Suite (#52)", () => {
       const firstLink = initial.links[0];
       const initialConversions = firstLink.conversions;
       const initialRevenue = firstLink.totalRevenueXlm;
+      const initialCommission = firstLink.commissionEarnedXlm;
 
       const updated = await recordLinkConversion(firstLink.id, 200);
       expect(updated.conversions).toBe(initialConversions + 1);
       expect(updated.totalRevenueXlm).toBe(initialRevenue + 200);
+      expect(updated.commissionEarnedXlm).toBe(
+        initialCommission + (200 * firstLink.commissionRate) / 100,
+      );
       expect(updated.conversionRate).toBe(calculateCVR(updated.conversions, updated.clicks));
       expect(updated.trendDirection).toBe("up");
     });
