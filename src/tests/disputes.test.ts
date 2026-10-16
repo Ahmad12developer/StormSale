@@ -3,6 +3,9 @@ import {
   fetchDisputes,
   submitDisputeReport,
   getDisputeStatusLabel,
+  validateDisputeAttachment,
+  validateDisputeSaleAmount,
+  MAX_ATTACHMENT_SIZE_BYTES,
   type DisputeReport,
   type DisputeCategory,
   type DisputeStatus,
@@ -44,7 +47,7 @@ describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
 
     const created = await submitDisputeReport(payload);
 
-    expect(created.id).toMatch(/^DSP-\d{4}$/);
+    expect(created.id.startsWith("DSP-")).toBe(true);
     expect(created.status).toBe("submitted");
     expect(created.orderReference).toBe("ORD-TEST-9921");
     expect(created.estimatedSaleAmountXlm).toBe(450.0);
@@ -79,13 +82,28 @@ describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
     });
   });
 
-  it("validates file attachment size constraint under 5MB", () => {
-    const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
-
+  it("validates file attachment size constraint using exported validateDisputeAttachment", () => {
     const validFileSize = 2.4 * 1024 * 1024;
     const oversizedFileSize = 6.2 * 1024 * 1024;
 
-    expect(validFileSize <= MAX_FILE_SIZE_BYTES).toBe(true);
-    expect(oversizedFileSize <= MAX_FILE_SIZE_BYTES).toBe(false);
+    const validResult = validateDisputeAttachment(validFileSize);
+    expect(validResult.valid).toBe(true);
+    expect(validResult.error).toBeUndefined();
+
+    const oversizedResult = validateDisputeAttachment(oversizedFileSize);
+    expect(oversizedResult.valid).toBe(false);
+    expect(oversizedResult.error).toContain("5MB");
+
+    expect(MAX_ATTACHMENT_SIZE_BYTES).toBe(5 * 1024 * 1024);
+  });
+
+  it("validates sale amount correctly and rejects invalid/negative values", () => {
+    expect(validateDisputeSaleAmount("150.5").valid).toBe(true);
+    expect(validateDisputeSaleAmount("150.5").value).toBe(150.5);
+
+    expect(validateDisputeSaleAmount("0").valid).toBe(false);
+    expect(validateDisputeSaleAmount("-50").valid).toBe(false);
+    expect(validateDisputeSaleAmount("invalid").valid).toBe(false);
+    expect(validateDisputeSaleAmount("").valid).toBe(false);
   });
 });

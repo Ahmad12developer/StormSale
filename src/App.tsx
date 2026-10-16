@@ -65,12 +65,14 @@ function Router() {
 
   const isMock =
     typeof window !== "undefined" &&
-    (new URLSearchParams(window.location.search).get("mock") === "true" ||
-      new URLSearchParams(window.location.search).get("page") !== null);
+    Boolean(import.meta.env.DEV) &&
+    new URLSearchParams(window.location.search).get("mock") === "true";
 
   React.useEffect(() => {
     if (isMock && !isConnected) {
-      connectWallet("mock").catch(() => {});
+      connectWallet("mock").catch((err) => {
+        console.error("Mock wallet connection failed:", err);
+      });
     }
   }, [isMock, isConnected, connectWallet]);
 

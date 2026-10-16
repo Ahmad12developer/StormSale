@@ -22,6 +22,8 @@ import {
 import {
   fetchDisputes,
   submitDisputeReport,
+  validateDisputeAttachment,
+  validateDisputeSaleAmount,
   type DisputeReport,
   type DisputeCategory,
   type DisputeStatus,
@@ -58,6 +60,7 @@ export const IssueDisputeManager: React.FC<{
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const currentFileRef = useRef<File | null>(null);
 
   const campaigns = [
     { id: 1, name: "Tech Gadgets Pro", link: "https://stormsale.xyz/c/1?ref=GBBD5678" },
@@ -85,18 +88,25 @@ export const IssueDisputeManager: React.FC<{
       const file = e.target.files[0];
 
       // Validate size (< 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setUploadError("File size exceeds 5MB limit. Please upload a smaller screenshot.");
+      const sizeValidation = validateDisputeAttachment(file.size);
+      if (!sizeValidation.valid) {
+        setUploadError(sizeValidation.error || "File size exceeds 5MB limit.");
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
         return;
       }
 
       setUploadedFile(file);
+      currentFileRef.current = file;
 
       // Create preview for images
       if (file.type.startsWith("image/")) {
         const reader = new FileReader();
         reader.onload = () => {
-          setPreviewUrl(reader.result as string);
+          if (currentFileRef.current === file) {
+            setPreviewUrl(reader.result as string);
+          }
         };
         reader.readAsDataURL(file);
       } else {
@@ -106,6 +116,7 @@ export const IssueDisputeManager: React.FC<{
   };
 
   const removeFile = () => {
+    currentFileRef.current = null;
     setUploadedFile(null);
     setPreviewUrl(null);
     if (fileInputRef.current) {
@@ -123,7 +134,13 @@ export const IssueDisputeManager: React.FC<{
     setIsSubmitting(true);
     setUploadError(null);
 
-    const saleAmount = parseFloat(estimatedSaleAmountXlm) || 100.0;
+    const saleValidation = validateDisputeSaleAmount(estimatedSaleAmountXlm);
+    if (!saleValidation.valid || saleValidation.value === undefined) {
+      setIsSubmitting(false);
+      setUploadError(saleValidation.error || "Please enter a valid, positive sale amount in XLM.");
+      return;
+    }
+    const saleAmount = saleValidation.value;
     const commissionAmount = saleAmount * 0.1; // 10% commission
 
     try {
@@ -377,13 +394,14 @@ export const IssueDisputeManager: React.FC<{
               </label>
 
               {!uploadedFile ? (
-                <div
+                <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-200 dark:border-zinc-800 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-zinc-950/30 group"
+                  className="w-full border-2 border-dashed border-slate-200 dark:border-zinc-800 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-zinc-950/30 group focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <UploadCloud className="w-8 h-8 mx-auto text-zinc-400 group-hover:text-indigo-600 transition-colors" />
                   <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300 mt-2">
-                    Click to upload screenshot or drag & drop
+                    Click to select screenshot or proof file
                   </p>
                   <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
                     PNG, JPG, or PDF up to 5MB
@@ -395,7 +413,7 @@ export const IssueDisputeManager: React.FC<{
                     onChange={handleFileChange}
                     className="hidden"
                   />
-                </div>
+                </button>
               ) : (
                 <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-500/30 flex items-center justify-between">
                   <div className="flex items-center space-x-3 overflow-hidden">
@@ -507,7 +525,9 @@ export const IssueDisputeManager: React.FC<{
                         </span>
                         <span
                           className={
-                            dispute.status === "investigating" || dispute.status === "approved"
+                            dispute.status === "investigating" ||
+                            dispute.status === "approved" ||
+                            dispute.status === "rejected"
                               ? "text-indigo-600 dark:text-indigo-400 font-extrabold"
                               : ""
                           }

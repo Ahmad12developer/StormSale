@@ -23,8 +23,46 @@ export interface DisputeReport {
   advertiserResponse?: string;
 }
 
-// Initial in-memory mock store for submitted dispute reports
-let disputesStore: DisputeReport[] = [
+export const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
+export function validateDisputeAttachment(size: number): { valid: boolean; error?: string } {
+  if (size > MAX_ATTACHMENT_SIZE_BYTES) {
+    return {
+      valid: false,
+      error: "File size exceeds 5MB limit. Please upload a smaller screenshot.",
+    };
+  }
+  return { valid: true };
+}
+
+export function validateDisputeSaleAmount(amount: unknown): {
+  valid: boolean;
+  value?: number;
+  error?: string;
+} {
+  const num = Number(amount);
+  if (!Number.isFinite(num) || num <= 0) {
+    return {
+      valid: false,
+      error: "Please enter a valid, positive sale amount in XLM.",
+    };
+  }
+  return { valid: true, value: num };
+}
+
+const STORAGE_KEY = "stormsale_disputes_ledger";
+
+let disputeCounter = 1043;
+
+export const generateDisputeId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `DSP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  }
+  disputeCounter += 1;
+  return `DSP-${disputeCounter}-${Date.now().toString(36).toUpperCase()}`;
+};
+
+const initialDisputes: DisputeReport[] = [
   {
     id: "DSP-1042",
     campaignId: 1,
@@ -64,14 +102,56 @@ let disputesStore: DisputeReport[] = [
   },
 ];
 
+const loadStoredDisputes = (): DisputeReport[] => {
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore JSON parse errors
+    }
+  }
+  return initialDisputes;
+};
+
+const persistDisputes = (reports: DisputeReport[]) => {
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+    } catch {
+      // ignore storage errors
+    }
+  }
+};
+
+let disputesStore: DisputeReport[] = loadStoredDisputes();
+
 export const fetchDisputes = async (): Promise<DisputeReport[]> => {
+  try {
+    const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001/api";
+    const res = await fetch(`${API_URL}/affiliate/disputes`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        disputesStore = data;
+        persistDisputes(disputesStore);
+      }
+    }
+  } catch {
+    // Offline / fallback to local persistent store
+  }
   return [...disputesStore];
 };
 
 export const submitDisputeReport = async (
   report: Omit<DisputeReport, "id" | "status" | "submittedAt" | "updatedAt">,
 ): Promise<DisputeReport> => {
-  const id = `DSP-${Math.floor(1000 + Math.random() * 9000)}`;
+  const id = generateDisputeId();
   const now = new Date().toLocaleString();
 
   const newReport: DisputeReport = {
@@ -83,6 +163,19 @@ export const submitDisputeReport = async (
   };
 
   disputesStore = [newReport, ...disputesStore];
+  persistDisputes(disputesStore);
+
+  try {
+    const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001/api";
+    await fetch(`${API_URL}/affiliate/disputes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newReport),
+    });
+  } catch {
+    // Offline fallback retains locally persisted report
+  }
+
   return newReport;
 };
 

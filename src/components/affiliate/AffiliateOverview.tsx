@@ -326,19 +326,37 @@ export const AffiliateOverview = () => {
                 label: "Join New Campaign",
                 description: "Discover high-paying campaigns",
                 icon: Users,
-                onClick: () => {},
+                onClick: () => {
+                  if (typeof window !== "undefined") {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("tab", "join-campaign");
+                    window.location.assign(url.toString());
+                  }
+                },
               },
               {
                 label: "Track Performance",
                 description: "View analytics and insights",
                 icon: TrendingUp,
-                onClick: () => {},
+                onClick: () => {
+                  if (typeof window !== "undefined") {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("tab", "performance");
+                    window.location.assign(url.toString());
+                  }
+                },
               },
               {
                 label: "Withdraw Earnings",
                 description: "Claim your commissions",
                 icon: DollarSign,
-                onClick: () => {},
+                onClick: () => {
+                  if (typeof window !== "undefined") {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("tab", "claim-payouts");
+                    window.location.assign(url.toString());
+                  }
+                },
               },
               {
                 label: "Report Missing Sale",

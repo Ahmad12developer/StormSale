@@ -12,11 +12,21 @@ interface AffiliateProps {
   onBack: () => void;
 }
 
+const VALID_TABS = [
+  "overview",
+  "join-campaign",
+  "my-sales",
+  "claim-payouts",
+  "performance",
+  "security",
+];
+
 const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      return params.get("tab") || "overview";
+      const tab = params.get("tab");
+      return tab && VALID_TABS.includes(tab) ? tab : "overview";
     }
     return "overview";
   });
