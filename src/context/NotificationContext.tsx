@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
+import { getStellarExplorerLink } from "../utils/network";
 
 export type NotificationType = "success" | "error" | "warning" | "info";
 
@@ -34,6 +35,7 @@ export interface NotificationReceipt {
   date?: string;
   recipient?: string;
   explorerUrl?: string;
+  confirmed?: boolean;
 }
 
 export interface NotificationAction {
@@ -198,7 +200,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         ...notification,
         id,
         persistent: isPersistent,
-        duration: isPersistent ? 0 : notification.duration ?? 6000,
+        duration: isPersistent ? 0 : (notification.duration ?? 6000),
       };
 
       setNotifications((prev) => [...prev, newNotification]);
@@ -344,12 +346,7 @@ const NotificationContainer: React.FC = () => {
         {notifications.map((notification) => {
           const isReward =
             notification.confetti ||
-            (notification.type === "success" &&
-              (notification.title.toLowerCase().includes("claim") ||
-                notification.title.toLowerCase().includes("commission") ||
-                notification.title.toLowerCase().includes("payout") ||
-                notification.title.toLowerCase().includes("reward") ||
-                !!notification.receipt));
+            (notification.type === "success" && isRewardTitle(notification.title));
 
           const hasReceipt = Boolean(
             notification.receipt || notification.receiptUrl || notification.onViewReceipt,
@@ -479,6 +476,7 @@ const ReceiptModal: React.FC<{
   onClose: () => void;
 }> = ({ receipt, isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -493,18 +491,24 @@ const ReceiptModal: React.FC<{
 
   const handleCopy = async (text: string) => {
     try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API unavailable");
+      }
       await navigator.clipboard.writeText(text);
       setCopied(true);
+      setCopyError(null);
       if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
       copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
     } catch {
-      // clipboard access error handled gracefully
+      setCopyError("Failed to copy");
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopyError(null), 3000);
     }
   };
 
   const explorerLink =
     receipt.explorerUrl ||
-    (receipt.txHash ? `https://stellar.expert/explorer/testnet/tx/${receipt.txHash}` : undefined);
+    (receipt.txHash ? getStellarExplorerLink("tx", receipt.txHash) : undefined);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -527,15 +531,38 @@ const ReceiptModal: React.FC<{
 
         <div className="py-4 space-y-4">
           {/* Status Badge */}
-          <div className="flex items-center justify-between p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20">
+          <div
+            className={`flex items-center justify-between p-3.5 rounded-xl border ${
+              receipt.confirmed !== false
+                ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20"
+                : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20"
+            }`}
+          >
             <div className="flex items-center space-x-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                Settled on Soroban Smart Contract
-              </span>
+              {receipt.confirmed !== false ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                    Settled on Soroban Smart Contract
+                  </span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                    Simulated / Unconfirmed
+                  </span>
+                </>
+              )}
             </div>
-            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-emerald-200/60 dark:bg-emerald-500/30 text-emerald-900 dark:text-emerald-200">
-              Confirmed
+            <span
+              className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
+                receipt.confirmed !== false
+                  ? "bg-emerald-200/60 dark:bg-emerald-500/30 text-emerald-900 dark:text-emerald-200"
+                  : "bg-amber-200/60 dark:bg-amber-500/30 text-amber-900 dark:text-amber-200"
+              }`}
+            >
+              {receipt.confirmed !== false ? "Confirmed" : "Simulated"}
             </span>
           </div>
 
@@ -584,11 +611,17 @@ const ReceiptModal: React.FC<{
                   <button
                     onClick={() => handleCopy(receipt.txHash || "")}
                     className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    aria-label="Copy transaction hash"
                   >
                     {copied ? (
                       <>
                         <Check className="w-3 h-3 text-emerald-500" />
                         <span className="text-emerald-500">Copied</span>
+                      </>
+                    ) : copyError ? (
+                      <>
+                        <AlertTriangle className="w-3 h-3 text-rose-500" />
+                        <span className="text-rose-500">{copyError}</span>
                       </>
                     ) : (
                       <>

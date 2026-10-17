@@ -97,12 +97,19 @@ export const PerformanceAnalytics = () => {
   );
 
   useEffect(() => {
-    loadData(false, timeRange);
+    let isMounted = true;
+    void Promise.resolve().then(async () => {
+      if (!isMounted) return;
+      await loadData(false, timeRange);
+    });
     // Real-time polling every 30 seconds
     const interval = setInterval(() => {
-      loadData(false, timeRange);
+      void loadData(false, timeRange);
     }, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [loadData, timeRange]);
 
   const handleCopyLink = async (linkId: string, url: string) => {
@@ -130,10 +137,10 @@ export const PerformanceAnalytics = () => {
   const handleSimulateClick = async (linkId: string) => {
     setSimulatingId(linkId);
     try {
-      const updated = await recordLinkClick(linkId);
+      const currentRange = activeRangeRef.current;
+      const updated = await recordLinkClick(linkId, currentRange);
       setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
       // Refresh summary for the currently active range
-      const currentRange = activeRangeRef.current;
       const data = await fetchAffiliateConversionData(undefined, currentRange);
       if (activeRangeRef.current === currentRange) {
         setSummary(data.summary);
@@ -158,9 +165,9 @@ export const PerformanceAnalytics = () => {
   const handleSimulateSale = async (linkId: string) => {
     setSimulatingId(linkId);
     try {
-      const updated = await recordLinkConversion(linkId, 100);
-      setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
       const currentRange = activeRangeRef.current;
+      const updated = await recordLinkConversion(linkId, 100, currentRange);
+      setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
       const data = await fetchAffiliateConversionData(undefined, currentRange);
       if (activeRangeRef.current === currentRange) {
         setSummary(data.summary);
@@ -225,7 +232,7 @@ export const PerformanceAnalytics = () => {
               Real-Time CVR & Conversion Analytics
             </h1>
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
               Live Synced
             </span>
           </div>
@@ -456,9 +463,11 @@ export const PerformanceAnalytics = () => {
                   <TableHead className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 py-4">
                     Earned
                   </TableHead>
-                  <TableHead className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 py-4 pr-6 text-right">
-                    Real-time Test / Action
-                  </TableHead>
+                  {import.meta.env.DEV && (
+                    <TableHead className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 py-4 pr-6 text-right">
+                      Real-time Test / Action
+                    </TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -532,32 +541,34 @@ export const PerformanceAnalytics = () => {
                       {link.commissionEarnedXlm.toLocaleString()} XLM
                     </TableCell>
 
-                    <TableCell className="py-4 pr-6 text-right">
-                      <div className="inline-flex items-center gap-1.5 justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSimulateClick(link.id)}
-                          disabled={simulatingId === link.id}
-                          className="h-8 px-2.5 text-xs rounded-lg font-medium border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
-                          title="Simulate click event to test real-time CVR recalculation"
-                        >
-                          <Zap className="w-3 h-3 text-amber-500 mr-1" />
-                          +Click
-                        </Button>
+                    {import.meta.env.DEV && (
+                      <TableCell className="py-4 pr-6 text-right">
+                        <div className="inline-flex items-center gap-1.5 justify-end">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSimulateClick(link.id)}
+                            disabled={simulatingId === link.id}
+                            className="h-8 px-2.5 text-xs rounded-lg font-medium border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800"
+                            title="Simulate click event to test real-time CVR recalculation"
+                          >
+                            <Zap className="w-3 h-3 text-amber-500 mr-1" />
+                            +Click
+                          </Button>
 
-                        <Button
-                          size="sm"
-                          onClick={() => handleSimulateSale(link.id)}
-                          disabled={simulatingId === link.id}
-                          className="h-8 px-2.5 text-xs rounded-lg font-bold bg-zinc-900 hover:bg-zinc-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white shadow-sm"
-                          title="Simulate sale event to trigger conversion and toast alert"
-                        >
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          +Sale
-                        </Button>
-                      </div>
-                    </TableCell>
+                          <Button
+                            size="sm"
+                            onClick={() => handleSimulateSale(link.id)}
+                            disabled={simulatingId === link.id}
+                            className="h-8 px-2.5 text-xs rounded-lg font-bold bg-zinc-900 hover:bg-zinc-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white shadow-sm"
+                            title="Simulate sale event to trigger conversion and toast alert"
+                          >
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            +Sale
+                          </Button>
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

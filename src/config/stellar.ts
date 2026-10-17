@@ -7,7 +7,11 @@ export const STELLAR_CONFIG = {
     import.meta.env.VITE_STELLAR_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015",
   rpcUrl: import.meta.env.VITE_STELLAR_RPC_URL || "https://soroban-testnet.stellar.org",
   horizonUrl: import.meta.env.VITE_STELLAR_HORIZON_URL || "https://horizon-testnet.stellar.org",
-  explorerUrl: "https://stellar.expert/explorer/testnet",
+  explorerUrl:
+    import.meta.env.VITE_STELLAR_EXPLORER_URL ||
+    (import.meta.env.VITE_STELLAR_NETWORK === "PUBLIC"
+      ? "https://stellar.expert/explorer/public"
+      : "https://stellar.expert/explorer/testnet"),
 
   // Deployed Soroban Contract ID on Stellar Testnet
   contractId:

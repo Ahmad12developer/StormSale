@@ -11,12 +11,14 @@ import {
   createCampaignContractCall,
   logSaleContractCall,
   claimPayoutContractCall,
+  refundCampaignEscrowContractCall,
 } from "../lib/stellar";
 import type { WalletType } from "../lib/stellar";
 import { STELLAR_CONFIG } from "../config/stellar";
 import { registerUser } from "../utils/api";
 import type { ClaimableCampaignItem, BatchClaimReceipt } from "../lib/batchClaim";
 import type { PasskeyCredentialRecord } from "../lib/passkeySigner";
+import { purgeOnLogout } from "../lib/storage";
 
 export interface Web3ContextType {
   userAddress: string | null;
@@ -54,7 +56,10 @@ export interface Web3ContextType {
     amountXlm: number,
   ) => Promise<{ success: boolean; txHash?: string }>;
 
-  claimPayoutOnChain: (campaignId: number) => Promise<{ success: boolean; txHash?: string }>;
+  claimPayoutOnChain: (
+    campaignId: number,
+  ) => Promise<{ success: boolean; confirmed: boolean; txHash?: string }>;
+  refundCampaignEscrow: (campaignId: number) => Promise<{ success: boolean; txHash?: string }>;
 
   batchClaimPayoutsOnChain: (campaigns: ClaimableCampaignItem[]) => Promise<BatchClaimReceipt>;
 
@@ -180,6 +185,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     setIsConnected(false);
     setConnectorType(null);
     setXlmBalance("0.00");
+    void purgeOnLogout();
   };
 
   const updateUserRole = async (role: string) => {
@@ -269,13 +275,38 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   };
 
   // Soroban: Claim Affiliate Commission
-  const claimPayoutOnChain = async (campaignId: number) => {
+  const claimPayoutOnChain = async (
+    campaignId: number,
+  ): Promise<{ success: boolean; confirmed: boolean; txHash?: string }> => {
     if (!userAddress) throw new Error("Wallet not connected");
 
     console.log(`[Soroban] Claiming payout for Campaign #${campaignId} by ${userAddress}`);
 
     if (connectorType === "freighter" || connectorType === "albedo" || connectorType === "xbull") {
       const res = await claimPayoutContractCall(userAddress, campaignId, connectorType);
+      setTimeout(() => refreshBalance(userAddress), 1000);
+      return {
+        ...res,
+        confirmed: true,
+      };
+    } else {
+      const mockTxHash = `tx_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 8)}`;
+      return {
+        success: true,
+        confirmed: false,
+        txHash: mockTxHash,
+      };
+    }
+  };
+
+  // Soroban: Refund Unused Campaign Escrow
+  const refundCampaignEscrow = async (campaignId: number) => {
+    if (!userAddress) throw new Error("Wallet not connected");
+
+    console.log(`[Soroban] Refunding unused escrow for Campaign #${campaignId} by ${userAddress}`);
+
+    if (connectorType === "freighter" || connectorType === "albedo" || connectorType === "xbull") {
+      const res = await refundCampaignEscrowContractCall(userAddress, campaignId, connectorType);
       setTimeout(() => refreshBalance(userAddress), 1000);
       return res;
     } else {
@@ -377,6 +408,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         createCampaignOnChain,
         logSaleOnChain,
         claimPayoutOnChain,
+        refundCampaignEscrow,
         batchClaimPayoutsOnChain,
         registerPasskeyAccount,
         factoryContract,

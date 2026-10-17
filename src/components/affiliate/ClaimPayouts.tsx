@@ -25,6 +25,7 @@ import {
 } from "../../lib/batchClaim";
 import { motion, AnimatePresence } from "framer-motion";
 import { getStellarExplorerLink } from "../../utils/network";
+import { shouldDeliverAffiliateNotification } from "./AffiliateSettings";
 
 export const ClaimPayouts = () => {
   const { userAddress, batchClaimPayoutsOnChain, claimPayoutOnChain } = useWeb3();
@@ -88,6 +89,16 @@ export const ClaimPayouts = () => {
       if (!resultReceipt.success || resultReceipt.totalClaimedXlm <= 0) {
         throw new Error("Batch claim transaction did not return a valid payout amount.");
       }
+      if (!resultReceipt.confirmed) {
+        showNotification({
+          type: "error",
+          title: "Claim Not Confirmed",
+          message:
+            "Transaction was not confirmed on the Stellar ledger. Simulated and fallback results cannot be claimed.",
+        });
+        return;
+      }
+
       setReceipt(resultReceipt);
 
       // Mark claimed campaigns
@@ -99,20 +110,23 @@ export const ClaimPayouts = () => {
       const txHash = resultReceipt.txHash || undefined;
       const receiptUrl = txHash ? getStellarExplorerLink("tx", txHash) : undefined;
 
-      showNotification({
-        type: "success",
-        title: "Commission Paid Out!",
-        message: `Claimed ${resultReceipt.totalClaimedXlm.toFixed(2)} XLM across ${resultReceipt.itemizedClaims.length} campaigns in 1 transaction.`,
-        confetti: true,
-        receiptUrl,
-        receipt: {
-          txHash,
-          amount: `${resultReceipt.totalClaimedXlm.toFixed(2)} XLM`,
-          campaign: `Batch Claim (${resultReceipt.itemizedClaims.length} campaigns)`,
-          date: new Date().toLocaleString(),
-          explorerUrl: receiptUrl,
-        },
-      });
+      if (shouldDeliverAffiliateNotification("payout")) {
+        showNotification({
+          type: "success",
+          title: "Commission Paid Out!",
+          message: `Claimed ${resultReceipt.totalClaimedXlm.toFixed(2)} XLM across ${resultReceipt.itemizedClaims.length} campaigns in 1 transaction. Settled on Soroban Smart Contract.`,
+          confetti: true,
+          receiptUrl,
+          receipt: {
+            txHash,
+            amount: `${resultReceipt.totalClaimedXlm.toFixed(2)} XLM`,
+            campaign: `Batch Claim (${resultReceipt.itemizedClaims.length} campaigns)`,
+            date: new Date().toLocaleString(),
+            explorerUrl: receiptUrl,
+            confirmed: true,
+          },
+        });
+      }
     } catch (err: unknown) {
       console.error("Batch claim failure:", err);
       showNotification({
@@ -149,6 +163,16 @@ export const ClaimPayouts = () => {
       if (!res.success) {
         throw new Error("On-chain claim invocation failed.");
       }
+      if (!res.confirmed) {
+        showNotification({
+          type: "error",
+          title: "Claim Not Confirmed",
+          message:
+            "Transaction was not confirmed on the Stellar ledger. Simulated and fallback results cannot be claimed.",
+        });
+        return;
+      }
+
       setCampaigns((prev) =>
         prev.map((c) => (c.campaignId === campaignId ? { ...c, status: "claimed" } : c)),
       );
@@ -156,23 +180,26 @@ export const ClaimPayouts = () => {
       const txHash = res.txHash || undefined;
       const receiptUrl = txHash ? getStellarExplorerLink("tx", txHash) : undefined;
 
-      showNotification({
-        type: "success",
-        title: "Commission Paid Out!",
-        message: txHash
-          ? `Settled on Stellar ledger. Tx: ${txHash.slice(0, 10)}...`
-          : "Settled on Stellar ledger.",
-        confetti: true,
-        receiptUrl,
-        receipt: {
-          txHash,
-          amount: `${targetCampaign.claimableXlm.toFixed(2)} XLM`,
-          saleId: campaignId,
-          campaign: targetCampaign.campaignName,
-          date: new Date().toLocaleString(),
-          explorerUrl: receiptUrl,
-        },
-      });
+      if (shouldDeliverAffiliateNotification("payout")) {
+        showNotification({
+          type: "success",
+          title: "Commission Paid Out!",
+          message: txHash
+            ? `Settled on Soroban Smart Contract. Tx: ${txHash.slice(0, 10)}... (Confirmed)`
+            : "Settled on Soroban Smart Contract. (Confirmed)",
+          confetti: true,
+          receiptUrl,
+          receipt: {
+            txHash,
+            amount: `${targetCampaign.claimableXlm.toFixed(2)} XLM`,
+            saleId: campaignId,
+            campaign: targetCampaign.campaignName,
+            date: new Date().toLocaleString(),
+            explorerUrl: receiptUrl,
+            confirmed: true,
+          },
+        });
+      }
     } catch (err: unknown) {
       showNotification({
         type: "error",

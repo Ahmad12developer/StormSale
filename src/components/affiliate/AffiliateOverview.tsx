@@ -16,6 +16,7 @@ import {
   ArrowRight,
   CheckCircle2,
   BarChart3,
+  type LucideIcon,
 } from "lucide-react";
 import {
   fetchAffiliateConversionData,
@@ -56,7 +57,7 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
     value: string;
     change?: string;
     trend?: "up" | "down" | "neutral";
-    icon: any;
+    icon: LucideIcon;
   }> = [
     {
       title: "Total Earnings",

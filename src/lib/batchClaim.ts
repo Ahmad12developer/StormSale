@@ -23,6 +23,7 @@ export interface ClaimableCampaignItem {
 
 export interface BatchClaimReceipt {
   success: boolean;
+  confirmed: boolean;
   txHash: string;
   totalClaimedXlm: number;
   timestamp: number;
@@ -116,6 +117,7 @@ export async function executeBatchCommissionClaim(
 
     return {
       success: true,
+      confirmed: false,
       txHash: mockHash,
       totalClaimedXlm,
       timestamp: Date.now(),
@@ -136,6 +138,7 @@ export async function executeBatchCommissionClaim(
       "tx_batch_" + Date.now().toString(16) + "_" + Math.random().toString(16).slice(2, 8);
     return {
       success: true,
+      confirmed: false,
       txHash: fallbackHash,
       totalClaimedXlm,
       timestamp: Date.now(),
@@ -170,15 +173,37 @@ export async function executeBatchCommissionClaim(
       const signedTx = TransactionBuilder.fromXDR(signedXdr, STELLAR_CONFIG.networkPassphrase);
 
       const sendResponse = await server.sendTransaction(signedTx);
+      if (sendResponse.status === "ERROR") {
+        throw new Error(
+          `Failed to submit batch claim: ${JSON.stringify(sendResponse.errorResult)}`,
+        );
+      }
       const txHash = sendResponse.hash || "0xbatch_confirmed";
 
-      return {
-        success: true,
-        txHash,
-        totalClaimedXlm,
-        timestamp: Date.now(),
-        itemizedClaims,
-      };
+      let attempts = 0;
+      const maxAttempts = 25;
+      while (attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        attempts++;
+
+        const statusResponse = await server.getTransaction(txHash);
+        if (statusResponse.status === "SUCCESS") {
+          return {
+            success: true,
+            confirmed: true,
+            txHash,
+            totalClaimedXlm,
+            timestamp: Date.now(),
+            itemizedClaims,
+          };
+        } else if (statusResponse.status === "FAILED") {
+          throw new Error("Batch claim transaction reverted on ledger.");
+        }
+      }
+
+      throw new Error(
+        `Batch claim transaction timed out awaiting confirmation after ${maxAttempts} attempts. Hash: ${txHash}`,
+      );
     }
   } catch (simErr) {
     console.warn("Soroban RPC batch simulation note:", simErr);
@@ -190,6 +215,7 @@ export async function executeBatchCommissionClaim(
 
   return {
     success: true,
+    confirmed: false,
     txHash,
     totalClaimedXlm,
     timestamp: Date.now(),

@@ -136,7 +136,28 @@ export const INITIAL_ACTIVE_LINKS: ActiveLinkAnalytics[] = [
   },
 ];
 
-let syncedLinksStore: ActiveLinkAnalytics[] = INITIAL_ACTIVE_LINKS.map((l) => ({ ...l }));
+// In-memory synced state keyed by cacheKey (wallet + time range)
+const mutableLinksCache = new Map<string, ActiveLinkAnalytics[]>();
+
+function getMutableLinks(cacheKey: string): ActiveLinkAnalytics[] {
+  let list = mutableLinksCache.get(cacheKey);
+  if (!list) {
+    list = INITIAL_ACTIVE_LINKS.map((l) => ({ ...l }));
+    mutableLinksCache.set(cacheKey, list);
+  }
+  return list;
+}
+
+function findCacheKeyForLink(linkId: string, preferredKey?: string): string {
+  if (preferredKey && mutableLinksCache.has(preferredKey)) {
+    const list = mutableLinksCache.get(preferredKey)!;
+    if (list.some((l) => l.id === linkId)) return preferredKey;
+  }
+  for (const [key, list] of mutableLinksCache.entries()) {
+    if (list.some((l) => l.id === linkId)) return key;
+  }
+  return preferredKey || "default-7d";
+}
 
 // Cache keyed strictly by wallet and requested time range
 const conversionDataCache = new Map<
@@ -159,7 +180,56 @@ function withLinkLock<T>(linkId: string, fn: () => Promise<T>): Promise<T> {
 
 export function clearConversionCache(): void {
   conversionDataCache.clear();
-  syncedLinksStore = INITIAL_ACTIVE_LINKS.map((l) => ({ ...l }));
+  mutableLinksCache.clear();
+}
+
+export function buildSummaryFromLinks(
+  validatedLinks: ActiveLinkAnalytics[],
+  backendPreviousCVR?: number,
+): ConversionAnalyticsSummary {
+  const totalClicks = validatedLinks.reduce((acc, l) => acc + l.clicks, 0);
+  const totalConversions = validatedLinks.reduce((acc, l) => acc + l.conversions, 0);
+  const overallCVR = calculateCVR(totalConversions, totalClicks);
+
+  const prevConversions = validatedLinks.reduce(
+    (acc, l) =>
+      acc +
+      (l.clicks > 0
+        ? (l.clicks *
+            (typeof l.previousPeriodConversionRate === "number"
+              ? l.previousPeriodConversionRate
+              : l.previousConversionRate)) /
+          100
+        : 0),
+    0,
+  );
+  const calculatedPrevCVR = calculateCVR(prevConversions, totalClicks);
+  const previousOverallCVR =
+    backendPreviousCVR !== undefined ? backendPreviousCVR : calculatedPrevCVR;
+  const { trendDelta: cvrTrendDelta, trendDirection: cvrTrendDirection } = calculateTrend(
+    overallCVR,
+    previousOverallCVR,
+  );
+
+  const totalEarnedXlm = validatedLinks.reduce((acc, l) => acc + l.commissionEarnedXlm, 0);
+  const totalRevenueXlm = validatedLinks.reduce((acc, l) => acc + l.totalRevenueXlm, 0);
+
+  return {
+    totalClicks,
+    totalConversions,
+    overallCVR,
+    previousOverallCVR,
+    cvrTrendDelta,
+    cvrTrendDirection,
+    totalEarnedXlm,
+    totalRevenueXlm,
+    activeLinksCount: validatedLinks.filter((l) => l.status === "active").length,
+    lastSynced: new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+  };
 }
 
 export const registerUser = async (walletAddress: string, role: string = "AFFILIATE") => {
@@ -169,6 +239,10 @@ export const registerUser = async (walletAddress: string, role: string = "AFFILI
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ walletAddress, role }),
     });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || "Backend registration failed");
+    }
     return await res.json();
   } catch (error) {
     console.error("Failed to register user:", error);
@@ -231,7 +305,19 @@ export const fetchAffiliateConversionData = async (
             !isNaN((l as Record<string, unknown>).conversions as number) &&
             "conversionRate" in l &&
             typeof (l as Record<string, unknown>).conversionRate === "number" &&
-            !isNaN((l as Record<string, unknown>).conversionRate as number),
+            !isNaN((l as Record<string, unknown>).conversionRate as number) &&
+            "commissionEarnedXlm" in l &&
+            typeof (l as Record<string, unknown>).commissionEarnedXlm === "number" &&
+            !isNaN((l as Record<string, unknown>).commissionEarnedXlm as number) &&
+            "totalRevenueXlm" in l &&
+            typeof (l as Record<string, unknown>).totalRevenueXlm === "number" &&
+            !isNaN((l as Record<string, unknown>).totalRevenueXlm as number) &&
+            "commissionRate" in l &&
+            typeof (l as Record<string, unknown>).commissionRate === "number" &&
+            !isNaN((l as Record<string, unknown>).commissionRate as number) &&
+            "trendDelta" in l &&
+            typeof (l as Record<string, unknown>).trendDelta === "number" &&
+            !isNaN((l as Record<string, unknown>).trendDelta as number),
         )
       ) {
         const validatedLinks: ActiveLinkAnalytics[] = data.links.map((l: ActiveLinkAnalytics) => ({
@@ -242,53 +328,13 @@ export const fetchAffiliateConversionData = async (
               : l.previousConversionRate,
         }));
 
-        const totalClicks = validatedLinks.reduce((acc, l) => acc + l.clicks, 0);
-        const totalConversions = validatedLinks.reduce((acc, l) => acc + l.conversions, 0);
-        const overallCVR = calculateCVR(totalConversions, totalClicks);
-
-        const prevConversions = validatedLinks.reduce(
-          (acc, l) =>
-            acc +
-            (l.clicks > 0
-              ? (l.clicks *
-                  (typeof l.previousPeriodConversionRate === "number"
-                    ? l.previousPeriodConversionRate
-                    : l.previousConversionRate)) /
-                100
-              : 0),
-          0,
-        );
-        const calculatedPrevCVR = calculateCVR(prevConversions, totalClicks);
-        const previousOverallCVR =
-          backendPreviousCVR !== undefined ? backendPreviousCVR : calculatedPrevCVR;
-        const { trendDelta: cvrTrendDelta, trendDirection: cvrTrendDirection } = calculateTrend(
-          overallCVR,
-          previousOverallCVR,
-        );
-
-        const totalEarnedXlm = validatedLinks.reduce((acc, l) => acc + l.commissionEarnedXlm, 0);
-        const totalRevenueXlm = validatedLinks.reduce((acc, l) => acc + l.totalRevenueXlm, 0);
-
-        const summary: ConversionAnalyticsSummary = {
-          totalClicks,
-          totalConversions,
-          overallCVR,
-          previousOverallCVR,
-          cvrTrendDelta,
-          cvrTrendDirection,
-          totalEarnedXlm,
-          totalRevenueXlm,
-          activeLinksCount: validatedLinks.filter((l) => l.status === "active").length,
-          lastSynced: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          }),
-        };
-
+        const summary = buildSummaryFromLinks(validatedLinks, backendPreviousCVR);
         const result = { links: validatedLinks, summary };
         conversionDataCache.set(cacheKey, result);
-        syncedLinksStore = validatedLinks;
+        mutableLinksCache.set(
+          cacheKey,
+          validatedLinks.map((l) => ({ ...l })),
+        );
         return result;
       }
     }
@@ -312,14 +358,22 @@ export const fetchAffiliateConversionData = async (
  * Simulates or records a real-time referral link click.
  * Recalculates CVR, maintains previous-period baseline, and uses delta rollback.
  */
-export const recordLinkClick = async (linkId: string): Promise<ActiveLinkAnalytics> => {
+export const recordLinkClick = async (
+  linkId: string,
+  range?: string,
+  walletAddress?: string,
+): Promise<ActiveLinkAnalytics> => {
   return withLinkLock(linkId, async () => {
-    const targetIndex = syncedLinksStore.findIndex((l) => l.id === linkId);
+    const preferredKey = range ? `${walletAddress || "default"}-${range}` : undefined;
+    const cacheKey = findCacheKeyForLink(linkId, preferredKey);
+    const store = getMutableLinks(cacheKey);
+
+    const targetIndex = store.findIndex((l) => l.id === linkId);
     if (targetIndex === -1) {
       throw new Error(`Link not found: ${linkId}`);
     }
 
-    const current = syncedLinksStore[targetIndex];
+    const current = store[targetIndex];
     const newClicks = current.clicks + 1;
     const prevCVR = current.conversionRate;
     const newCVR = calculateCVR(current.conversions, newClicks);
@@ -340,7 +394,9 @@ export const recordLinkClick = async (linkId: string): Promise<ActiveLinkAnalyti
       lastSyncedAt: new Date().toISOString(),
     };
 
-    syncedLinksStore[targetIndex] = updated;
+    store[targetIndex] = updated;
+    const updatedSummary = buildSummaryFromLinks(store);
+    conversionDataCache.set(cacheKey, { links: [...store], summary: updatedSummary });
 
     try {
       const res = await fetch(`${API_URL}/affiliate/links/${linkId}/click`, {
@@ -351,22 +407,24 @@ export const recordLinkClick = async (linkId: string): Promise<ActiveLinkAnalyti
         throw new Error(`Failed to record click: HTTP ${res.status}`);
       }
     } catch (error) {
-      const idx = syncedLinksStore.findIndex((l) => l.id === linkId);
+      const idx = store.findIndex((l) => l.id === linkId);
       if (idx !== -1) {
-        const item = syncedLinksStore[idx];
+        const item = store[idx];
         const revertedClicks = Math.max(0, item.clicks - 1);
         const revertedCVR = calculateCVR(item.conversions, revertedClicks);
         const { trendDelta: revDelta, trendDirection: revDir } = calculateTrend(
           revertedCVR,
           baselinePeriodCVR,
         );
-        syncedLinksStore[idx] = {
+        store[idx] = {
           ...item,
           clicks: revertedClicks,
           conversionRate: revertedCVR,
           trendDelta: revDelta,
           trendDirection: revDir,
         };
+        const revertedSummary = buildSummaryFromLinks(store);
+        conversionDataCache.set(cacheKey, { links: [...store], summary: revertedSummary });
       }
       throw error;
     }
@@ -382,14 +440,20 @@ export const recordLinkClick = async (linkId: string): Promise<ActiveLinkAnalyti
 export const recordLinkConversion = async (
   linkId: string,
   saleAmountXlm: number = 100,
+  range?: string,
+  walletAddress?: string,
 ): Promise<ActiveLinkAnalytics> => {
   return withLinkLock(linkId, async () => {
-    const targetIndex = syncedLinksStore.findIndex((l) => l.id === linkId);
+    const preferredKey = range ? `${walletAddress || "default"}-${range}` : undefined;
+    const cacheKey = findCacheKeyForLink(linkId, preferredKey);
+    const store = getMutableLinks(cacheKey);
+
+    const targetIndex = store.findIndex((l) => l.id === linkId);
     if (targetIndex === -1) {
       throw new Error(`Link not found: ${linkId}`);
     }
 
-    const current = syncedLinksStore[targetIndex];
+    const current = store[targetIndex];
     const newConversions = current.conversions + 1;
     const prevCVR = current.conversionRate;
     const newCVR = calculateCVR(newConversions, current.clicks);
@@ -413,7 +477,9 @@ export const recordLinkConversion = async (
       lastSyncedAt: new Date().toISOString(),
     };
 
-    syncedLinksStore[targetIndex] = updated;
+    store[targetIndex] = updated;
+    const updatedSummary = buildSummaryFromLinks(store);
+    conversionDataCache.set(cacheKey, { links: [...store], summary: updatedSummary });
 
     try {
       const res = await fetch(`${API_URL}/affiliate/links/${linkId}/conversion`, {
@@ -425,16 +491,16 @@ export const recordLinkConversion = async (
         throw new Error(`Failed to record conversion: HTTP ${res.status}`);
       }
     } catch (error) {
-      const idx = syncedLinksStore.findIndex((l) => l.id === linkId);
+      const idx = store.findIndex((l) => l.id === linkId);
       if (idx !== -1) {
-        const item = syncedLinksStore[idx];
+        const item = store[idx];
         const revertedConversions = Math.max(0, item.conversions - 1);
         const revertedCVR = calculateCVR(revertedConversions, item.clicks);
         const { trendDelta: revDelta, trendDirection: revDir } = calculateTrend(
           revertedCVR,
           baselinePeriodCVR,
         );
-        syncedLinksStore[idx] = {
+        store[idx] = {
           ...item,
           conversions: revertedConversions,
           conversionRate: revertedCVR,
@@ -443,6 +509,8 @@ export const recordLinkConversion = async (
           trendDelta: revDelta,
           trendDirection: revDir,
         };
+        const revertedSummary = buildSummaryFromLinks(store);
+        conversionDataCache.set(cacheKey, { links: [...store], summary: revertedSummary });
       }
       throw error;
     }
