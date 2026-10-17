@@ -22,7 +22,11 @@ import {
 import { IssueDisputeManager } from "./IssueDisputeManager";
 import { fetchDisputes, type DisputeReport } from "../../utils/disputes";
 
-export const AffiliateOverview = () => {
+export interface AffiliateOverviewProps {
+  onNavigateTab?: (tab: string) => void;
+}
+
+export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigateTab }) => {
   const [isDisputeOpen, setIsDisputeOpen] = useState(false);
   const [disputeInitialTab, setDisputeInitialTab] = useState<"form" | "tracker">("form");
   const [disputeReports, setDisputeReports] = useState<DisputeReport[]>([]);
@@ -34,6 +38,16 @@ export const AffiliateOverview = () => {
   const openDisputeModal = (tab: "form" | "tracker") => {
     setDisputeInitialTab(tab);
     setIsDisputeOpen(true);
+  };
+
+  const navigateToTab = (tab: string) => {
+    if (onNavigateTab) {
+      onNavigateTab(tab);
+    } else if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", tab);
+      window.location.assign(url.toString());
+    }
   };
   const stats = [
     {
@@ -240,7 +254,7 @@ export const AffiliateOverview = () => {
                     Issue Reporting & Dispute Protocol
                   </h3>
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
-                    Live Interface
+                    Demo Protocol
                   </span>
                 </div>
                 <p className="text-zinc-600 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 max-w-2xl leading-relaxed">
@@ -326,37 +340,19 @@ export const AffiliateOverview = () => {
                 label: "Join New Campaign",
                 description: "Discover high-paying campaigns",
                 icon: Users,
-                onClick: () => {
-                  if (typeof window !== "undefined") {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set("tab", "join-campaign");
-                    window.location.assign(url.toString());
-                  }
-                },
+                onClick: () => navigateToTab("join-campaign"),
               },
               {
                 label: "Track Performance",
-                description: "View analytics and insights",
+                description: "Performance metrics coming soon",
                 icon: TrendingUp,
-                onClick: () => {
-                  if (typeof window !== "undefined") {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set("tab", "performance");
-                    window.location.assign(url.toString());
-                  }
-                },
+                disabled: true,
               },
               {
                 label: "Withdraw Earnings",
                 description: "Claim your commissions",
                 icon: DollarSign,
-                onClick: () => {
-                  if (typeof window !== "undefined") {
-                    const url = new URL(window.location.href);
-                    url.searchParams.set("tab", "claim-payouts");
-                    window.location.assign(url.toString());
-                  }
-                },
+                onClick: () => navigateToTab("claim-payouts"),
               },
               {
                 label: "Report Missing Sale",
@@ -370,8 +366,9 @@ export const AffiliateOverview = () => {
                 <Button
                   key={index}
                   variant="outline"
+                  disabled={action.disabled}
                   onClick={action.onClick}
-                  className="h-24 flex-col gap-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 transition-all group"
+                  className="h-24 flex-col gap-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <IconComponent className="w-6 h-6 text-zinc-400 dark:text-zinc-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" />
                   <div className="text-center">

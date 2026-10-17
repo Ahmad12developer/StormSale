@@ -56,7 +56,7 @@ let disputeCounter = 1043;
 
 export const generateDisputeId = (): string => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `DSP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    return `DSP-${crypto.randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
   }
   disputeCounter += 1;
   return `DSP-${disputeCounter}-${Date.now().toString(36).toUpperCase()}`;
@@ -151,6 +151,11 @@ export const fetchDisputes = async (): Promise<DisputeReport[]> => {
 export const submitDisputeReport = async (
   report: Omit<DisputeReport, "id" | "status" | "submittedAt" | "updatedAt">,
 ): Promise<DisputeReport> => {
+  const saleValidation = validateDisputeSaleAmount(report.estimatedSaleAmountXlm);
+  if (!saleValidation.valid || saleValidation.value === undefined) {
+    throw new Error(saleValidation.error || "Please enter a valid, positive sale amount in XLM.");
+  }
+
   const id = generateDisputeId();
   const now = new Date().toLocaleString();
 

@@ -20,7 +20,7 @@ const VALID_TABS = [
   "join-campaign",
   "my-sales",
   "claim-payouts",
-  "performance",
+  "settings",
   "security",
 ];
 
@@ -33,6 +33,16 @@ const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
     }
     return "overview";
   });
+
+  const handleTabChange = (tabId: string) => {
+    const target = VALID_TABS.includes(tabId) ? tabId : "overview";
+    setActiveTab(target);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", target);
+      window.history.pushState({}, "", url.toString());
+    }
+  };
 
   const tabs = [
     { id: "overview", label: "Dashboard Overview", icon: LayoutDashboard },
@@ -54,9 +64,9 @@ const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
       case "settings":
         return <AffiliateSettings />;
       case "overview":
-        return <AffiliateOverview />;
+        return <AffiliateOverview onNavigateTab={handleTabChange} />;
       default:
-        return <AffiliateOverview />;
+        return <AffiliateOverview onNavigateTab={handleTabChange} />;
     }
   };
 
@@ -64,7 +74,7 @@ const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
     <div className="flex flex-col lg:flex-row min-h-screen bg-slate-50 dark:bg-zinc-950 font-sans selection:bg-indigo-500/30">
       <Sidebar
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
         tabs={tabs}
         onBack={onBack}
         roleName="Affiliate Pro"
@@ -88,7 +98,7 @@ const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
               <Button
                 variant={activeTab === "settings" ? "default" : "outline"}
                 size="sm"
-                onClick={() => setActiveTab("settings")}
+                onClick={() => handleTabChange("settings")}
                 aria-label="Preferences"
                 className="rounded-xl h-10 px-4 font-semibold text-xs flex items-center space-x-1.5 border border-slate-200 dark:border-zinc-800"
               >

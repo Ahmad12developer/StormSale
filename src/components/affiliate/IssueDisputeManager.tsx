@@ -114,17 +114,24 @@ export const IssueDisputeManager: React.FC<{
     setUploadError(null);
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      currentFileRef.current = file;
       handleDisputeFileProcessing(file, {
         onError: (errMsg) => {
+          if (currentFileRef.current === file) {
+            currentFileRef.current = null;
+            setUploadedFile(null);
+            setPreviewUrl(null);
+          }
           setUploadError(errMsg);
           if (fileInputRef.current) {
             fileInputRef.current.value = "";
           }
         },
         onSuccess: (validatedFile, preview) => {
-          setUploadedFile(validatedFile);
-          currentFileRef.current = validatedFile;
-          setPreviewUrl(preview);
+          if (currentFileRef.current === validatedFile) {
+            setUploadedFile(validatedFile);
+            setPreviewUrl(preview);
+          }
         },
       });
     }
@@ -174,7 +181,7 @@ export const IssueDisputeManager: React.FC<{
       });
 
       setDisputes((prev) => [newReport, ...prev]);
-      setSuccessMsg(`Dispute #${newReport.id} submitted successfully to advertiser.`);
+      setSuccessMsg(`Dispute #${newReport.id} logged successfully in local dispute ledger.`);
       setActiveTab("tracker");
 
       // Reset form
@@ -241,10 +248,11 @@ export const IssueDisputeManager: React.FC<{
             </div>
             <div>
               <DialogTitle className="text-xl font-black text-zinc-900 dark:text-white">
-                Affiliate Dispute & Issue Reporting
+                Affiliate Dispute & Issue Reporting (Demo Mode)
               </DialogTitle>
               <DialogDescription className="text-xs text-zinc-500 dark:text-zinc-400">
-                Submit standardized reports for missing conversions or uncredited commissions
+                Submit standardized dispute reports for missing conversions (Demo Interface: local
+                persistence with simulated advertiser review)
               </DialogDescription>
             </div>
           </div>
@@ -409,26 +417,35 @@ export const IssueDisputeManager: React.FC<{
               </label>
 
               {!uploadedFile ? (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full border-2 border-dashed border-slate-200 dark:border-zinc-800 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-zinc-950/30 group focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <UploadCloud className="w-8 h-8 mx-auto text-zinc-400 group-hover:text-indigo-600 transition-colors" />
-                  <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300 mt-2">
-                    Click to select screenshot or proof file
-                  </p>
-                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
-                    PNG, JPG, or PDF up to 5MB
-                  </p>
+                <div>
                   <input
+                    id="dispute-file-input"
                     ref={fileInputRef}
                     type="file"
                     accept="image/*,application/pdf"
                     onChange={handleFileChange}
-                    className="hidden"
+                    className="sr-only"
                   />
-                </button>
+                  <label
+                    htmlFor="dispute-file-input"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        fileInputRef.current?.click();
+                      }
+                    }}
+                    className="block w-full border-2 border-dashed border-slate-200 dark:border-zinc-800 hover:border-indigo-400 dark:hover:border-indigo-500/50 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-zinc-950/30 group focus:outline-none focus:ring-2 focus:ring-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500"
+                  >
+                    <UploadCloud className="w-8 h-8 mx-auto text-zinc-400 group-hover:text-indigo-600 transition-colors" />
+                    <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300 mt-2">
+                      Click to select screenshot or proof file
+                    </p>
+                    <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1">
+                      PNG, JPG, or PDF up to 5MB
+                    </p>
+                  </label>
+                </div>
               ) : (
                 <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-500/30 flex items-center justify-between">
                   <div className="flex items-center space-x-3 overflow-hidden">

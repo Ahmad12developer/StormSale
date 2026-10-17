@@ -1,6 +1,10 @@
 import React, { Suspense, useState } from "react";
 import { Web3Provider } from "./context/Web3Context";
-import { NotificationProvider, NotificationWrapper } from "./context/NotificationContext";
+import {
+  NotificationProvider,
+  NotificationWrapper,
+  useNotification,
+} from "./context/NotificationContext";
 import { Landing } from "./pages/Landing";
 import { Dashboard } from "./pages/Dashboard";
 import { useWeb3 } from "./hooks/useWeb3";
@@ -63,6 +67,7 @@ class ErrorBoundary extends React.Component<
 
 function Router() {
   const { isConnected, connectWallet } = useWeb3();
+  const { showNotification } = useNotification();
   const [currentPage, setCurrentPage] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -85,9 +90,14 @@ function Router() {
     if (isMock && !isConnected) {
       connectWallet("mock").catch((err) => {
         console.error("Mock wallet connection failed:", err);
+        showNotification({
+          type: "error",
+          title: "Wallet Connection Failed",
+          message: err instanceof Error ? err.message : "Failed to connect mock wallet.",
+        });
       });
     }
-  }, [isMock, isConnected, connectWallet]);
+  }, [isMock, isConnected, connectWallet, showNotification]);
 
   if (activeBrandSubdomain) {
     return (

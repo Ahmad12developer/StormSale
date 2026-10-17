@@ -49,6 +49,7 @@ describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
     const created = await submitDisputeReport(payload);
 
     expect(created.id.startsWith("DSP-")).toBe(true);
+    expect(created.id).toMatch(/^DSP-[A-Z0-9]+$/);
     expect(created.status).toBe("submitted");
     expect(created.orderReference).toBe("ORD-TEST-9921");
     expect(created.estimatedSaleAmountXlm).toBe(450.0);
@@ -155,5 +156,82 @@ describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
     expect(validateDisputeSaleAmount("-50").valid).toBe(false);
     expect(validateDisputeSaleAmount("invalid").valid).toBe(false);
     expect(validateDisputeSaleAmount("").valid).toBe(false);
+  });
+
+  it("ignores late FileReader preview callbacks if file selection was cleared or replaced", () => {
+    let currentSelection: File | null = null;
+    let previewResult: string | null = null;
+
+    const fileA = new File(["bytes A"], "fileA.png", { type: "image/png" });
+    Object.defineProperty(fileA, "size", { value: 1024 });
+
+    // Mock delayed FileReader
+    let pendingOnload: (() => void) | null = null;
+    const delayedFileReader = {
+      result: "data:image/png;base64,fileA_data",
+      onload: null as ((this: FileReader, ev: ProgressEvent) => void) | null,
+      readAsDataURL: function (this: {
+        onload: ((this: FileReader, ev: ProgressEvent) => void) | null;
+      }) {
+        pendingOnload = () => {
+          if (this.onload) this.onload.call(this as unknown as FileReader, {} as ProgressEvent);
+        };
+      },
+    } as unknown as FileReader;
+
+    // User selects fileA
+    currentSelection = fileA;
+    handleDisputeFileProcessing(
+      fileA,
+      {
+        onError: () => {},
+        onSuccess: (file, preview) => {
+          // Component guard: only set if still current selection
+          if (currentSelection === file) {
+            previewResult = preview;
+          }
+        },
+      },
+      delayedFileReader,
+    );
+
+    // User removes file before FileReader completes
+    currentSelection = null;
+
+    // Late FileReader callback fires
+    if (pendingOnload) {
+      (pendingOnload as () => void)();
+    }
+
+    // Preview should NOT be set because selection was cleared
+    expect(previewResult).toBeNull();
+  });
+
+  it("rejects non-positive sale amount in submitDisputeReport", async () => {
+    await expect(
+      submitDisputeReport({
+        campaignId: 1,
+        campaignName: "Tech Gadgets Pro",
+        orderReference: "ORD-FAIL",
+        referralLinkUsed: "https://stormsale.xyz",
+        estimatedSaleAmountXlm: 0,
+        expectedCommissionXlm: 0,
+        category: "missing_attribution" as DisputeCategory,
+        description: "Zero amount test",
+      }),
+    ).rejects.toThrow(/positive/);
+
+    await expect(
+      submitDisputeReport({
+        campaignId: 1,
+        campaignName: "Tech Gadgets Pro",
+        orderReference: "ORD-FAIL-2",
+        referralLinkUsed: "https://stormsale.xyz",
+        estimatedSaleAmountXlm: -10,
+        expectedCommissionXlm: -1,
+        category: "missing_attribution" as DisputeCategory,
+        description: "Negative amount test",
+      }),
+    ).rejects.toThrow(/positive/);
   });
 });
