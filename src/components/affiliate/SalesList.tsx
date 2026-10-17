@@ -270,6 +270,16 @@ export const SALES_LEDGER: SaleRecord[] = [
   },
 ];
 
+export const isValidStellarAddress = (addr?: string): boolean => {
+  if (!addr) return false;
+  return /^[GC][A-Z2-7]{55}$/.test(addr);
+};
+
+export const isValidTxHash = (hash?: string): boolean => {
+  if (!hash) return false;
+  return /^[a-fA-F0-9]{64}$/.test(hash);
+};
+
 export const formatUtcTimestamp = (timestamp: number) =>
   new Date(timestamp * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 
@@ -350,25 +360,34 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
         throw new Error(`Horizon HTTP ${res.status}`);
       }
       const data = await res.json();
-      const records: SaleRecord[] = (data._embedded?.records || []).map((rec: any, idx: number) => {
-        const isRecipient = rec.to === userAddress;
-        const commission = parseFloat(rec.amount || "0");
-        return {
-          id: parseInt(rec.id?.slice(-5) || String(100 + idx), 10),
-          campaignId: 1,
-          campaignName: isRecipient ? "Affiliate Payout Settlement" : "Campaign Settlement",
-          campaignAddress: rec.from || STELLAR_CONFIG.contractId,
-          affiliate: rec.to || userAddress,
-          saleAmount: (commission * 10).toFixed(1),
-          commissionAmount: rec.amount || "0.0",
-          timestamp: Math.floor(new Date(rec.created_at).getTime() / 1000),
-          status: "claimed",
-          claimed: true,
-          clearingPeriod: DEFAULT_CLEARING_PERIOD,
-          txHash: rec.transaction_hash,
-          memo: `StormSale-Commission-#${rec.id?.slice(-4) || idx}`,
-        };
-      });
+      const records: SaleRecord[] = (data._embedded?.records || [])
+        .filter((rec: any) => {
+          if (rec.from && !isValidStellarAddress(rec.from)) return false;
+          if (rec.to && !isValidStellarAddress(rec.to)) return false;
+          return true;
+        })
+        .map((rec: any, idx: number) => {
+          const fromAddr = isValidStellarAddress(rec.from) ? rec.from : STELLAR_CONFIG.contractId;
+          const toAddr = isValidStellarAddress(rec.to) ? rec.to : userAddress;
+          const isRecipient = toAddr === userAddress;
+          const commission = parseFloat(rec.amount || "0");
+          const txHash = isValidTxHash(rec.transaction_hash) ? rec.transaction_hash : undefined;
+          return {
+            id: parseInt(rec.id?.slice(-5) || String(100 + idx), 10),
+            campaignId: 1,
+            campaignName: isRecipient ? "Affiliate Payout Settlement" : "Campaign Settlement",
+            campaignAddress: fromAddr,
+            affiliate: toAddr,
+            saleAmount: (commission * 10).toFixed(1),
+            commissionAmount: rec.amount || "0.0",
+            timestamp: Math.floor(new Date(rec.created_at).getTime() / 1000),
+            status: "claimed",
+            claimed: true,
+            clearingPeriod: DEFAULT_CLEARING_PERIOD,
+            txHash,
+            memo: `StormSale-Commission-#${rec.id?.slice(-4) || idx}`,
+          };
+        });
       setSalesLedger(records);
       setHorizonStatus("synchronized");
     } catch (err) {
@@ -412,9 +431,9 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
         if (isMounted) {
           setReceiptTxDetails({
             loading: false,
-            successful: selectedReceipt.status === "claimed" || selectedReceipt.claimed,
-            ledger: selectedReceipt.ledgerSequence,
-            feeXlm: selectedReceipt.feeXlm,
+            successful: undefined,
+            ledger: undefined,
+            feeXlm: undefined,
           });
         }
       });
@@ -1031,39 +1050,49 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                 className={`p-3.5 rounded-2xl border flex items-center justify-between ${
                   receiptTxDetails.successful === false
                     ? "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20"
-                    : "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20"
+                    : receiptTxDetails.successful === true
+                      ? "bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20"
+                      : "bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20"
                 }`}
               >
                 <div className="flex items-center gap-2">
                   {receiptTxDetails.successful === false ? (
                     <XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0" />
-                  ) : (
+                  ) : receiptTxDetails.successful === true ? (
                     <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  ) : (
+                    <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
                   )}
                   <div>
                     <p
                       className={`text-xs font-black ${
                         receiptTxDetails.successful === false
                           ? "text-rose-900 dark:text-rose-300"
-                          : "text-emerald-900 dark:text-emerald-300"
+                          : receiptTxDetails.successful === true
+                            ? "text-emerald-900 dark:text-emerald-300"
+                            : "text-amber-900 dark:text-amber-300"
                       }`}
                     >
                       {receiptTxDetails.successful === false
                         ? "FAILED - TRANSACTION REVERTED"
-                        : "SUCCESS - TRANSACTION COMMITTED"}
+                        : receiptTxDetails.successful === true
+                          ? "SUCCESS - TRANSACTION COMMITTED"
+                          : "PENDING - AWAITING CONFIRMATION"}
                     </p>
                     <p
                       className={`text-[11px] ${
                         receiptTxDetails.successful === false
                           ? "text-rose-700 dark:text-rose-400/80"
-                          : "text-emerald-700 dark:text-emerald-400/80"
+                          : receiptTxDetails.successful === true
+                            ? "text-emerald-700 dark:text-emerald-400/80"
+                            : "text-amber-700 dark:text-amber-400/80"
                       }`}
                     >
                       {receiptTxDetails.ledger
                         ? `Ledger Sequence #${receiptTxDetails.ledger}`
                         : selectedReceipt.ledgerSequence
                           ? `Ledger Sequence #${selectedReceipt.ledgerSequence}`
-                          : "Ledger Settlement: Verified on Horizon"}
+                          : "Ledger Sequence: Pending confirmation"}
                     </p>
                   </div>
                 </div>
@@ -1071,16 +1100,18 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                   className={`text-xs font-mono font-bold px-2 py-1 rounded-lg bg-white/80 dark:bg-zinc-900/80 ${
                     receiptTxDetails.successful === false
                       ? "text-rose-800 dark:text-rose-300"
-                      : "text-emerald-800 dark:text-emerald-300"
+                      : receiptTxDetails.successful === true
+                        ? "text-emerald-800 dark:text-emerald-300"
+                        : "text-amber-800 dark:text-amber-300"
                   }`}
                 >
                   {receiptTxDetails.loading
                     ? "Verifying..."
                     : receiptTxDetails.successful === false
                       ? "Reverted"
-                      : selectedReceipt.txHash
+                      : receiptTxDetails.successful === true
                         ? "On-Chain Verified"
-                        : "Pending"}
+                        : "Unverified"}
                 </span>
               </div>
 
