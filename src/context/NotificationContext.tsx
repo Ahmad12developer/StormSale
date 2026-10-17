@@ -4,12 +4,14 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
+  AlertTriangle,
   X,
   Receipt,
   Sparkles,
   ExternalLink,
   Copy,
   Check,
+  ArrowRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Confetti } from "../components/shared/Confetti";
@@ -34,6 +36,12 @@ export interface NotificationReceipt {
   explorerUrl?: string;
 }
 
+export interface NotificationAction {
+  label: string;
+  url?: string;
+  onClick?: () => void;
+}
+
 export interface Notification {
   id: string;
   type: NotificationType;
@@ -44,14 +52,87 @@ export interface Notification {
   receiptUrl?: string;
   receipt?: NotificationReceipt;
   onViewReceipt?: () => void;
+  persistent?: boolean;
+  action?: NotificationAction;
+  actionLabel?: string;
+  actionUrl?: string;
+  onAction?: () => void;
+  campaignId?: string;
+}
+
+export interface EscrowMonitoredCampaign {
+  id: string;
+  name: string;
+  escrowInitial: number;
+  escrowBalance: number;
+  status?: string;
+}
+
+/**
+ * Evaluates campaign escrow funds and determines whether a critical low-balance condition exists (< 10%).
+ */
+export function evaluateCampaignEscrowLevel(campaign: EscrowMonitoredCampaign): {
+  isLowEscrow: boolean;
+  remainingXlm: number;
+  percentageRemaining: number;
+} {
+  if (campaign.status === "Completed" || campaign.escrowInitial <= 0) {
+    return { isLowEscrow: false, remainingXlm: campaign.escrowBalance, percentageRemaining: 0 };
+  }
+  const percentage = (campaign.escrowBalance / campaign.escrowInitial) * 100;
+  return {
+    isLowEscrow: percentage < 10 && campaign.escrowBalance > 0,
+    remainingXlm: campaign.escrowBalance,
+    percentageRemaining: percentage,
+  };
+}
+
+/**
+ * Builds a structured persistent notification payload with Top Up flow action details.
+ */
+export function buildLowEscrowNotification(params: {
+  campaignName: string;
+  remainingXlm: number;
+  percentageRemaining: number;
+  campaignId?: string;
+  topUpUrl?: string;
+  onTopUp?: () => void;
+}): Omit<Notification, "id"> {
+  const defaultTopUpUrl = params.campaignId
+    ? `/advertiser?action=topup&campaignId=${encodeURIComponent(params.campaignId)}`
+    : `/advertiser?action=topup`;
+
+  return {
+    type: "warning",
+    title: `Low Escrow Alert: ${params.campaignName}`,
+    message: `Remaining balance is critically low at ${params.remainingXlm.toLocaleString()} XLM (${params.percentageRemaining.toFixed(
+      1,
+    )}%). Payouts will stall if escrow is exhausted.`,
+    persistent: true,
+    duration: 0,
+    campaignId: params.campaignId,
+    actionLabel: "Top Up Escrow",
+    actionUrl: params.topUpUrl || defaultTopUpUrl,
+    onAction: params.onTopUp,
+  };
 }
 
 export interface NotificationContextType {
   notifications: Notification[];
-  showNotification: (notification: Omit<Notification, "id">) => void;
+  showNotification: (notification: Omit<Notification, "id">) => string;
   dismissNotification: (id: string) => void;
   triggerConfetti: () => void;
   openReceiptModal: (receipt: NotificationReceipt) => void;
+  notifyLowEscrowBalance: (params: {
+    campaignName: string;
+    remainingXlm: number;
+    percentageRemaining: number;
+    campaignId?: string;
+    topUpUrl?: string;
+    onTopUp?: () => void;
+  }) => string;
+  checkEscrowBalances: (campaigns: EscrowMonitoredCampaign[]) => void;
+  clearAllNotifications: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -104,30 +185,79 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     setNotifications((prev) => prev.filter((notification) => notification.id !== id));
   }, []);
 
+  const clearAllNotifications = useCallback(() => {
+    setNotifications([]);
+  }, []);
+
   const showNotification = useCallback(
-    (notification: Omit<Notification, "id">) => {
+    (notification: Omit<Notification, "id">): string => {
       const id = Math.random().toString(36).substring(2, 11);
-      const newNotification: Notification = { ...notification, id };
+      const isPersistent = notification.persistent === true || notification.duration === 0;
+
+      const newNotification: Notification = {
+        ...notification,
+        id,
+        persistent: isPersistent,
+        duration: isPersistent ? 0 : notification.duration ?? 6000,
+      };
 
       setNotifications((prev) => [...prev, newNotification]);
 
       // Trigger celebratory confetti animation on success if requested or if it's a claim/reward
       const isClaimSuccess =
-        notification.confetti ||
-        (notification.type === "success" && isRewardTitle(notification.title));
+        newNotification.confetti ||
+        (newNotification.type === "success" && isRewardTitle(newNotification.title));
 
       if (isClaimSuccess) {
         triggerConfetti();
       }
 
-      // Auto dismiss after duration
-      if (notification.duration !== 0) {
+      // Only set auto-dismiss timeout if notification is NOT persistent
+      if (!isPersistent && newNotification.duration && newNotification.duration > 0) {
         setTimeout(() => {
           dismissNotification(id);
-        }, notification.duration || 6000);
+        }, newNotification.duration);
       }
+
+      return id;
     },
     [triggerConfetti, dismissNotification],
+  );
+
+  const notifyLowEscrowBalance = useCallback(
+    (params: {
+      campaignName: string;
+      remainingXlm: number;
+      percentageRemaining: number;
+      campaignId?: string;
+      topUpUrl?: string;
+      onTopUp?: () => void;
+    }): string => {
+      return showNotification(buildLowEscrowNotification(params));
+    },
+    [showNotification],
+  );
+
+  const checkEscrowBalances = useCallback(
+    (campaigns: EscrowMonitoredCampaign[]) => {
+      campaigns.forEach((campaign) => {
+        const evalResult = evaluateCampaignEscrowLevel(campaign);
+        if (evalResult.isLowEscrow) {
+          const alreadyNotified = notifications.some(
+            (n) => n.campaignId === campaign.id && n.persistent,
+          );
+          if (!alreadyNotified) {
+            notifyLowEscrowBalance({
+              campaignName: campaign.name,
+              remainingXlm: evalResult.remainingXlm,
+              percentageRemaining: evalResult.percentageRemaining,
+              campaignId: campaign.id,
+            });
+          }
+        }
+      });
+    },
+    [notifications, notifyLowEscrowBalance],
   );
 
   return (
@@ -138,6 +268,9 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         dismissNotification,
         triggerConfetti,
         openReceiptModal,
+        notifyLowEscrowBalance,
+        checkEscrowBalances,
+        clearAllNotifications,
       }}
     >
       {children}
@@ -169,7 +302,7 @@ const NotificationContainer: React.FC = () => {
       case "error":
         return <XCircle className="w-5 h-5 text-rose-500 shrink-0" />;
       case "warning":
-        return <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />;
+        return <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />;
       case "info":
         return <AlertCircle className="w-5 h-5 text-indigo-500 shrink-0" />;
       default:
@@ -183,15 +316,15 @@ const NotificationContainer: React.FC = () => {
     }
     switch (type) {
       case "success":
-        return "bg-white dark:bg-zinc-900 border-emerald-200 dark:border-emerald-800/80 shadow-emerald-500/5";
+        return "bg-white dark:bg-zinc-900 border-emerald-300 dark:border-emerald-800/80 shadow-emerald-500/10";
       case "error":
-        return "bg-white dark:bg-zinc-900 border-rose-200 dark:border-rose-800/80 shadow-rose-500/5";
+        return "bg-white dark:bg-zinc-900 border-rose-300 dark:border-rose-800/80 shadow-rose-500/10";
       case "warning":
-        return "bg-white dark:bg-zinc-900 border-amber-200 dark:border-amber-800/80 shadow-amber-500/5";
+        return "bg-white dark:bg-zinc-900 border-amber-300 dark:border-amber-800/80 shadow-amber-500/10";
       case "info":
-        return "bg-white dark:bg-zinc-900 border-indigo-200 dark:border-indigo-800/80 shadow-indigo-500/5";
+        return "bg-white dark:bg-zinc-900 border-indigo-300 dark:border-indigo-800/80 shadow-indigo-500/10";
       default:
-        return "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800";
+        return "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 shadow-zinc-500/10";
     }
   };
 
@@ -206,7 +339,7 @@ const NotificationContainer: React.FC = () => {
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-3 max-w-sm w-full pointer-events-none">
+    <div className="fixed top-4 right-4 z-50 space-y-3 max-w-sm sm:max-w-md w-full px-4 sm:px-0 pointer-events-none">
       <AnimatePresence>
         {notifications.map((notification) => {
           const isReward =
@@ -222,35 +355,87 @@ const NotificationContainer: React.FC = () => {
             notification.receipt || notification.receiptUrl || notification.onViewReceipt,
           );
 
+          const actionLabel = notification.actionLabel || notification.action?.label;
+          const actionUrl = notification.actionUrl || notification.action?.url;
+
           return (
             <motion.div
               key={notification.id}
+              role="alert"
               initial={{ opacity: 0, y: -20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.95 }}
               transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              className={`p-4 rounded-2xl border shadow-lg pointer-events-auto backdrop-blur-md transition-all ${getBackgroundColor(
+              className={`p-4 rounded-2xl border shadow-xl pointer-events-auto backdrop-blur-md transition-all ${getBackgroundColor(
                 notification.type,
                 Boolean(isReward),
-              )}`}
+              )} ${notification.persistent ? "ring-2 ring-amber-400/20" : ""}`}
             >
               <div className="flex items-start space-x-3">
                 {getIcon(notification.type, Boolean(isReward))}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
                     <h4 className="font-bold text-sm text-zinc-900 dark:text-white leading-tight">
                       {notification.title}
                     </h4>
-                    {isReward && (
-                      <span className="inline-flex items-center text-[10px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
-                        Reward
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isReward && (
+                        <span className="inline-flex items-center text-[10px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
+                          Reward
+                        </span>
+                      )}
+                      {notification.persistent && (
+                        <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                          Persistent Alert
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {notification.message && (
-                    <p className="text-xs text-zinc-600 dark:text-zinc-400 mt-1 leading-relaxed break-words">
+                    <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed break-words">
                       {notification.message}
                     </p>
+                  )}
+
+                  {/* Interactive Action: Link or Button to "Top Up" flow */}
+                  {actionLabel && (
+                    <div className="mt-3 flex items-center gap-2 pt-1">
+                      {actionUrl ? (
+                        <a
+                          href={actionUrl}
+                          onClick={() => {
+                            if (notification.onAction) notification.onAction();
+                            if (notification.action?.onClick) notification.action.onClick();
+                            dismissNotification(notification.id);
+                          }}
+                          className="inline-flex items-center text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm transition-all"
+                        >
+                          <span>{actionLabel}</span>
+                          <ExternalLink className="w-3.5 h-3.5 ml-1.5 opacity-90" />
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (notification.onAction) notification.onAction();
+                            if (notification.action?.onClick) notification.action.onClick();
+                            dismissNotification(notification.id);
+                          }}
+                          className="inline-flex items-center text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm transition-all"
+                        >
+                          <span>{actionLabel}</span>
+                          <ArrowRight className="w-3.5 h-3.5 ml-1.5 opacity-90" />
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => dismissNotification(notification.id)}
+                        className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 font-semibold px-2 py-1 transition-colors"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
                   )}
 
                   {/* "View Receipt" Action Button */}
@@ -272,6 +457,7 @@ const NotificationContainer: React.FC = () => {
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => dismissNotification(notification.id)}
                   className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors shrink-0 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800"
                   aria-label="Close notification"
