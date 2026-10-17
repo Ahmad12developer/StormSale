@@ -66,9 +66,11 @@ export const IssueDisputeManager: React.FC<{
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  useEffect(() => {
+  const [prevSync, setPrevSync] = useState({ initialTab, isOpen });
+  if (prevSync.initialTab !== initialTab || prevSync.isOpen !== isOpen) {
+    setPrevSync({ initialTab, isOpen });
     setActiveTab(initialTab);
-  }, [initialTab, isOpen]);
+  }
 
   // Form Fields
   const [campaignId, setCampaignId] = useState<number>(1);

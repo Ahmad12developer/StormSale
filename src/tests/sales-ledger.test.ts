@@ -104,13 +104,13 @@ describe("Auditable Payout & History Ledger Suite (#51)", () => {
 
   it("validates 56-character Stellar G... and C... addresses and 64-hex transaction hashes", () => {
     // Valid account address (G...)
-    expect(
-      isValidStellarAddress("GADNSF7745EV3D5IRWBRN6OYXMR2YYAEGLDMULGTGDKKSBVXWMMVNPW6"),
-    ).toBe(true);
+    expect(isValidStellarAddress("GADNSF7745EV3D5IRWBRN6OYXMR2YYAEGLDMULGTGDKKSBVXWMMVNPW6")).toBe(
+      true,
+    );
     // Valid contract ID (C...)
-    expect(
-      isValidStellarAddress("CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526"),
-    ).toBe(true);
+    expect(isValidStellarAddress("CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526")).toBe(
+      true,
+    );
 
     // Invalid truncated or placeholder addresses
     expect(isValidStellarAddress("CA7QW5KXGPTR4N2K9J2M7V4...")).toBe(false);
@@ -120,9 +120,9 @@ describe("Auditable Payout & History Ledger Suite (#51)", () => {
     expect(isValidStellarAddress("not-an-address")).toBe(false);
 
     // Valid tx hash (64 hex characters)
-    expect(
-      isValidTxHash("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
-    ).toBe(true);
+    expect(isValidTxHash("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")).toBe(
+      true,
+    );
 
     // Invalid tx hashes
     expect(isValidTxHash("tx_12345")).toBe(false);

@@ -91,7 +91,7 @@ export function calculateClearing(
   const minutes = Math.floor((remainingSeconds % 3600) / 60);
   const seconds = Math.floor(remainingSeconds % 60);
 
-  let countdownText = "";
+  let countdownText: string;
   if (days > 0) {
     countdownText = `${days}d ${hours}h ${minutes}m ${seconds}s`;
   } else if (hours > 0) {
@@ -338,6 +338,25 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
     });
   }, []);
 
+  const openReceiptModal = (sale: SaleRecord) => {
+    setSelectedReceipt(sale);
+    setReceiptTxDetails({ loading: Boolean(sale.txHash) });
+  };
+
+  const closeReceiptModal = () => {
+    setSelectedReceipt(null);
+    setReceiptTxDetails({});
+  };
+
+  // Render-phase sync if initialSales prop changes
+  const [prevInitialSales, setPrevInitialSales] = useState(initialSales);
+  if (initialSales !== prevInitialSales) {
+    setPrevInitialSales(initialSales);
+    if (initialSales) {
+      setSalesLedger(initialSales);
+    }
+  }
+
   const loadLedger = useCallback(async () => {
     if (initialSales) {
       setSalesLedger(initialSales);
@@ -399,19 +418,76 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
     }
   }, [initialSales, userAddress]);
 
+  // Load from Horizon on mount / address change if initialSales not provided
   useEffect(() => {
-    loadLedger();
-  }, [loadLedger]);
-
-  // Fetch real transaction details from Horizon for receipt modal
-  useEffect(() => {
-    if (!selectedReceipt || !selectedReceipt.txHash) {
-      setReceiptTxDetails({});
+    if (initialSales || !userAddress) {
       return;
     }
 
     let isMounted = true;
-    setReceiptTxDetails({ loading: true });
+    fetch(`${STELLAR_CONFIG.horizonUrl}/accounts/${userAddress}/payments?order=desc&limit=20`)
+      .then(async (res) => {
+        if (!res.ok) {
+          throw new Error(`Horizon HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (isMounted) {
+          const records: SaleRecord[] = (data._embedded?.records || [])
+            .filter((rec: any) => {
+              if (rec.from && !isValidStellarAddress(rec.from)) return false;
+              if (rec.to && !isValidStellarAddress(rec.to)) return false;
+              return true;
+            })
+            .map((rec: any, idx: number) => {
+              const fromAddr = isValidStellarAddress(rec.from)
+                ? rec.from
+                : STELLAR_CONFIG.contractId;
+              const toAddr = isValidStellarAddress(rec.to) ? rec.to : userAddress;
+              const isRecipient = toAddr === userAddress;
+              const commission = parseFloat(rec.amount || "0");
+              const txHash = isValidTxHash(rec.transaction_hash) ? rec.transaction_hash : undefined;
+              return {
+                id: parseInt(rec.id?.slice(-5) || String(100 + idx), 10),
+                campaignId: 1,
+                campaignName: isRecipient ? "Affiliate Payout Settlement" : "Campaign Settlement",
+                campaignAddress: fromAddr,
+                affiliate: toAddr,
+                saleAmount: (commission * 10).toFixed(1),
+                commissionAmount: rec.amount || "0.0",
+                timestamp: Math.floor(new Date(rec.created_at).getTime() / 1000),
+                status: "claimed",
+                claimed: true,
+                clearingPeriod: DEFAULT_CLEARING_PERIOD,
+                txHash,
+                memo: `StormSale-Commission-#${rec.id?.slice(-4) || idx}`,
+              };
+            });
+          setSalesLedger(records);
+          setHorizonStatus("synchronized");
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.warn("Could not load Horizon settlement records:", err);
+          setError("Failed to fetch on-chain settlement records from Horizon node.");
+          setHorizonStatus("offline");
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialSales, userAddress]);
+
+  // Fetch real transaction details from Horizon for receipt modal
+  useEffect(() => {
+    if (!selectedReceipt?.txHash) {
+      return;
+    }
+
+    let isMounted = true;
 
     fetch(`${STELLAR_CONFIG.horizonUrl}/transactions/${selectedReceipt.txHash}`)
       .then(async (res) => {
@@ -966,7 +1042,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => setSelectedReceipt(sale)}
+                                  onClick={() => openReceiptModal(sale)}
                                   className="rounded-lg h-8 px-3 font-semibold text-xs border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-all flex items-center gap-1"
                                 >
                                   <Receipt className="w-3.5 h-3.5" />
@@ -1022,10 +1098,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
       </div>
 
       {/* On-Chain Transaction Receipt Modal (#51) */}
-      <Dialog
-        open={selectedReceipt !== null}
-        onOpenChange={(open) => !open && setSelectedReceipt(null)}
-      >
+      <Dialog open={selectedReceipt !== null} onOpenChange={(open) => !open && closeReceiptModal()}>
         <DialogContent className="sm:max-w-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
           <DialogHeader className="pb-4 border-b border-slate-100 dark:border-zinc-800/60">
             <div className="flex items-center space-x-3">
@@ -1216,7 +1289,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-zinc-800">
                 <Button
                   variant="outline"
-                  onClick={() => setSelectedReceipt(null)}
+                  onClick={closeReceiptModal}
                   className="rounded-xl px-5 text-xs font-semibold"
                 >
                   Close Receipt
