@@ -67,7 +67,14 @@ export const ClaimPayouts = () => {
 
   // 1-Click Automated Batch Claim Dispatcher
   const handleBatchClaim = async () => {
-    if (selectedCampaigns.length === 0) return;
+    if (selectedCampaigns.length === 0 || totalWithdrawableXlm <= 0) {
+      showNotification({
+        type: "error",
+        title: "No Claimable Campaigns",
+        message: "Please select at least one campaign with a matured claimable balance.",
+      });
+      return;
+    }
 
     setIsBatchClaiming(true);
     showNotification({
@@ -78,6 +85,9 @@ export const ClaimPayouts = () => {
 
     try {
       const resultReceipt = await batchClaimPayoutsOnChain(selectedCampaigns);
+      if (!resultReceipt.success || resultReceipt.totalClaimedXlm <= 0) {
+        throw new Error("Batch claim transaction did not return a valid payout amount.");
+      }
       setReceipt(resultReceipt);
 
       // Mark claimed campaigns
@@ -117,16 +127,28 @@ export const ClaimPayouts = () => {
 
   // Individual campaign claim fallback
   const handleSingleClaim = async (campaignId: number) => {
+    const targetCampaign = campaigns.find((c) => c.campaignId === campaignId);
+    if (!targetCampaign || targetCampaign.claimableXlm <= 0) {
+      showNotification({
+        type: "error",
+        title: "Claim Unavailable",
+        message: "No claimable commission found for this campaign.",
+      });
+      return;
+    }
+
     setClaimingId(campaignId);
     showNotification({
       type: "info",
       title: "Claiming Commission",
-      message: `Submitting Soroban claim_payout for Campaign #${campaignId}...`,
+      message: `Submitting Soroban claim_payout for ${targetCampaign.campaignName}...`,
     });
 
     try {
       const res = await claimPayoutOnChain(campaignId);
-      const targetCampaign = campaigns.find((c) => c.campaignId === campaignId);
+      if (!res.success) {
+        throw new Error("On-chain claim invocation failed.");
+      }
       setCampaigns((prev) =>
         prev.map((c) => (c.campaignId === campaignId ? { ...c, status: "claimed" } : c)),
       );
@@ -144,9 +166,9 @@ export const ClaimPayouts = () => {
         receiptUrl,
         receipt: {
           txHash,
-          amount: `${targetCampaign ? targetCampaign.claimableXlm.toFixed(2) : "0.00"} XLM`,
+          amount: `${targetCampaign.claimableXlm.toFixed(2)} XLM`,
           saleId: campaignId,
-          campaign: targetCampaign?.campaignName || `Campaign #${campaignId}`,
+          campaign: targetCampaign.campaignName,
           date: new Date().toLocaleString(),
           explorerUrl: receiptUrl,
         },

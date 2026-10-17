@@ -132,9 +132,12 @@ export const PerformanceAnalytics = () => {
     try {
       const updated = await recordLinkClick(linkId);
       setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
-      // Refresh summary
-      const data = await fetchAffiliateConversionData(undefined, timeRange);
-      setSummary(data.summary);
+      // Refresh summary for the currently active range
+      const currentRange = activeRangeRef.current;
+      const data = await fetchAffiliateConversionData(undefined, currentRange);
+      if (activeRangeRef.current === currentRange) {
+        setSummary(data.summary);
+      }
       showNotification({
         type: "info",
         title: "Click Recorded",
@@ -157,8 +160,11 @@ export const PerformanceAnalytics = () => {
     try {
       const updated = await recordLinkConversion(linkId, 100);
       setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
-      const data = await fetchAffiliateConversionData(undefined, timeRange);
-      setSummary(data.summary);
+      const currentRange = activeRangeRef.current;
+      const data = await fetchAffiliateConversionData(undefined, currentRange);
+      if (activeRangeRef.current === currentRange) {
+        setSummary(data.summary);
+      }
       showNotification({
         type: "success",
         title: "Conversion Recorded!",
