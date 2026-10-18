@@ -533,13 +533,13 @@ const ReceiptModal: React.FC<{
           {/* Status Badge */}
           <div
             className={`flex items-center justify-between p-3.5 rounded-xl border ${
-              receipt.confirmed !== false
+              receipt.confirmed === true
                 ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20"
                 : "bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20"
             }`}
           >
             <div className="flex items-center space-x-2">
-              {receipt.confirmed !== false ? (
+              {receipt.confirmed === true ? (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
@@ -557,12 +557,12 @@ const ReceiptModal: React.FC<{
             </div>
             <span
               className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
-                receipt.confirmed !== false
+                receipt.confirmed === true
                   ? "bg-emerald-200/60 dark:bg-emerald-500/30 text-emerald-900 dark:text-emerald-200"
                   : "bg-amber-200/60 dark:bg-amber-500/30 text-amber-900 dark:text-amber-200"
               }`}
             >
-              {receipt.confirmed !== false ? "Confirmed" : "Simulated"}
+              {receipt.confirmed === true ? "Confirmed" : "Simulated"}
             </span>
           </div>
 

@@ -340,7 +340,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       setTimeout(() => refreshBalance(userAddress), 1000);
       return {
         ...res,
-        confirmed: true,
+        confirmed: Boolean(res.confirmed),
       };
     } else {
       const mockTxHash = `tx_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 8)}`;
