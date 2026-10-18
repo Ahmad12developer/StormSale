@@ -259,8 +259,8 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
                 </div>
                 <p className="text-zinc-600 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 max-w-2xl leading-relaxed">
                   Notice missing conversions, delayed clearing, or uncredited referral commissions?
-                  Submit standardized dispute reports with screenshot attachments directly to
-                  advertisers with transparent multi-stage status tracking.
+                  Submit standardized dispute reports with screenshot attachments for local
+                  demonstration and transparent multi-stage status tracking.
                 </p>
 
                 <div className="flex flex-wrap items-center gap-4 mt-4 text-xs font-semibold">
@@ -294,9 +294,6 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
                         settled
                       </strong>
                     </span>
-                  </div>
-                  <div className="text-zinc-400 dark:text-zinc-500 hidden sm:inline">
-                    • Average response time: &lt;24 hours
                   </div>
                 </div>
               </div>

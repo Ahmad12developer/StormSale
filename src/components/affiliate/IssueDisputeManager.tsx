@@ -43,10 +43,20 @@ export function handleDisputeFileProcessing(
     return false;
   }
 
-  if (file.type.startsWith("image/")) {
+  const isImage = file.type.startsWith("image/");
+  const isPdf = file.type === "application/pdf";
+  if (!isImage && !isPdf) {
+    callbacks.onError("Unsupported file format. Please upload an image or PDF document.");
+    return false;
+  }
+
+  if (isImage) {
     const reader = customFileReader || new FileReader();
     reader.onload = () => {
       callbacks.onSuccess(file, reader.result as string);
+    };
+    reader.onerror = () => {
+      callbacks.onError("Failed to read the attachment file.");
     };
     reader.readAsDataURL(file);
   } else {
@@ -70,6 +80,9 @@ export const IssueDisputeManager: React.FC<{
   if (prevSync.initialTab !== initialTab || prevSync.isOpen !== isOpen) {
     setPrevSync({ initialTab, isOpen });
     setActiveTab(initialTab);
+    if (isOpen && !prevSync.isOpen) {
+      setSuccessMsg(null);
+    }
   }
 
   // Form Fields
@@ -181,7 +194,13 @@ export const IssueDisputeManager: React.FC<{
       });
 
       setDisputes((prev) => [newReport, ...prev]);
-      setSuccessMsg(`Dispute #${newReport.id} logged successfully in local dispute ledger.`);
+      if (newReport.persisted !== false) {
+        setSuccessMsg(`Dispute #${newReport.id} logged successfully in local dispute ledger.`);
+      } else {
+        setSuccessMsg(
+          `Dispute #${newReport.id} submitted (warning: storage unavailable, not persisted).`,
+        );
+      }
       setActiveTab("tracker");
 
       // Reset form
@@ -285,25 +304,26 @@ export const IssueDisputeManager: React.FC<{
           </div>
         </DialogHeader>
 
+        {successMsg && (
+          <div className="p-3.5 my-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 flex items-center justify-between text-xs font-bold text-emerald-800 dark:text-emerald-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>{successMsg}</span>
+            </div>
+            <button
+              type="button"
+              aria-label="Dismiss message"
+              onClick={() => setSuccessMsg(null)}
+              className="p-1 hover:text-emerald-950"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Tab 1: Standardized Dispute Form */}
         {activeTab === "form" && (
           <form onSubmit={handleSubmit} className="py-4 space-y-4">
-            {successMsg && (
-              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 flex items-center justify-between text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>{successMsg}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSuccessMsg(null)}
-                  className="p-1 hover:text-emerald-950"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-
             {uploadError && (
               <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 text-xs font-bold text-rose-800 dark:text-rose-300 flex items-center gap-2">
                 <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -314,10 +334,14 @@ export const IssueDisputeManager: React.FC<{
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Campaign Selector */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+                <label
+                  htmlFor="dispute-campaign-select"
+                  className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
+                >
                   Target Campaign
                 </label>
                 <select
+                  id="dispute-campaign-select"
                   value={campaignId}
                   onChange={(e) => handleCampaignChange(parseInt(e.target.value))}
                   className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-xs font-medium text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -332,10 +356,14 @@ export const IssueDisputeManager: React.FC<{
 
               {/* Dispute Category */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+                <label
+                  htmlFor="dispute-category-select"
+                  className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
+                >
                   Dispute Reason
                 </label>
                 <select
+                  id="dispute-category-select"
                   value={category}
                   onChange={(e) => setCategory(e.target.value as DisputeCategory)}
                   className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-xs font-medium text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -352,10 +380,14 @@ export const IssueDisputeManager: React.FC<{
             {/* Order Reference & Amount */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+                <label
+                  htmlFor="dispute-order-reference"
+                  className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
+                >
                   Order / Tx Reference ID *
                 </label>
                 <input
+                  id="dispute-order-reference"
                   type="text"
                   placeholder="e.g. ORD-98421 or Tx Hash"
                   value={orderReference}
@@ -366,11 +398,15 @@ export const IssueDisputeManager: React.FC<{
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+                <label
+                  htmlFor="dispute-sale-amount"
+                  className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
+                >
                   Estimated Sale Amount (XLM)
                 </label>
                 <div className="relative">
                   <input
+                    id="dispute-sale-amount"
                     type="number"
                     step="0.1"
                     min="1"
@@ -397,10 +433,14 @@ export const IssueDisputeManager: React.FC<{
 
             {/* Description */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+              <label
+                htmlFor="dispute-description"
+                className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
+              >
                 Dispute Explanation & Context *
               </label>
               <textarea
+                id="dispute-description"
                 rows={3}
                 placeholder="Describe when the conversion occurred, proof of referral attribution, or why this sale is missing..."
                 value={description}
@@ -412,7 +452,10 @@ export const IssueDisputeManager: React.FC<{
 
             {/* File / Screenshot Upload Support */}
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+              <label
+                htmlFor="dispute-file-input"
+                className="text-xs font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400"
+              >
                 Proof Attachment (Screenshot or Invoice)
               </label>
 

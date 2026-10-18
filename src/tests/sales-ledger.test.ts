@@ -3,11 +3,11 @@ import { getStellarExplorerLink } from "../utils/network";
 import {
   filterAndSortSales,
   escapeCsvField,
-  SALES_LEDGER,
   isValidStellarAddress,
   isValidTxHash,
   type SaleRecord,
 } from "../components/affiliate/SalesList";
+import { SALES_LEDGER } from "./fixtures/salesLedger";
 
 describe("Auditable Payout & History Ledger Suite (#51)", () => {
   it("filters ledger records by status using exported filterAndSortSales", () => {

@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { decryptPayload } from "../../lib/crypto";
+import { isValidStellarAddress } from "../../lib/stellar";
 import { getStellarExplorerLink, verifyHorizonConnectivity } from "../../utils/network";
 import { STELLAR_CONFIG } from "../../config/stellar";
 import { Web3Context } from "../../context/Web3Context";
@@ -45,7 +46,7 @@ import {
 } from "lucide-react";
 
 export interface SaleRecord {
-  id: number;
+  id: number | string;
   campaignId?: number;
   campaignName?: string;
   campaignAddress?: string;
@@ -60,9 +61,13 @@ export interface SaleRecord {
   feeXlm?: string;
   clearingPeriod?: number;
   claimed?: boolean;
+  encryptedPayload?: string;
 }
 
 export type Sale = SaleRecord;
+
+export const getSaleStatus = (sale: SaleRecord): "claimed" | "pending" | "processing" =>
+  sale.status || (sale.claimed ? "claimed" : "pending");
 
 export interface SalesListProps {
   sales?: Sale[];
@@ -148,7 +153,7 @@ export function filterAndSortSales(
 
   return sales
     .filter((sale) => {
-      const currentStatus = sale.status || (sale.claimed ? "claimed" : "pending");
+      const currentStatus = getSaleStatus(sale);
       // Status filter
       if (statusFilter !== "all" && currentStatus !== statusFilter) {
         return false;
@@ -177,103 +182,74 @@ export function filterAndSortSales(
       if (sortBy === "newest") return b.timestamp - a.timestamp;
       if (sortBy === "oldest") return a.timestamp - b.timestamp;
       if (sortBy === "highest_commission") {
-        return parseFloat(b.commissionAmount) - parseFloat(a.commissionAmount);
+        return (parseFloat(b.commissionAmount) || 0) - (parseFloat(a.commissionAmount) || 0);
       }
       if (sortBy === "highest_amount") {
-        return parseFloat(b.saleAmount) - parseFloat(a.saleAmount);
+        return (parseFloat(b.saleAmount) || 0) - (parseFloat(a.saleAmount) || 0);
       }
       return 0;
     });
 }
 
-export const SALES_LEDGER: SaleRecord[] = [
-  {
-    id: 101,
-    campaignId: 1,
-    campaignName: "Tech Gadgets Pro",
-    campaignAddress: "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526",
-    affiliate: "GADNSF7745EV3D5IRWBRN6OYXMR2YYAEGLDMULGTGDKKSBVXWMMVNPW6",
-    saleAmount: "100.0",
-    commissionAmount: "10.0",
-    timestamp: Math.floor(Date.now() / 1000 - 86400 * 2), // 2 days ago
-    status: "claimed",
-    claimed: true,
-    clearingPeriod: 604800,
-    txHash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    ledgerSequence: 5184920,
-    memo: "StormSale-Commission-#101",
-    feeXlm: "0.00001",
-  },
-  {
-    id: 102,
-    campaignId: 2,
-    campaignName: "Web3 Masterclass 2026",
-    campaignAddress: "CABAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAFNSZ",
-    affiliate: "GADNSF7745EV3D5IRWBRN6OYXMR2YYAEGLDMULGTGDKKSBVXWMMVNPW6",
-    saleAmount: "250.0",
-    commissionAmount: "25.0",
-    timestamp: Math.floor(Date.now() / 1000 - 86400 * 5), // 5 days ago
-    status: "claimed",
-    claimed: true,
-    clearingPeriod: 604800,
-    txHash: "8a6b12f45c9284d72856a9082cb348d2b295e4d94b08faec2389dc42a8b92d6e",
-    ledgerSequence: 5182104,
-    memo: "StormSale-Commission-#102",
-    feeXlm: "0.00001",
-  },
-  {
-    id: 103,
-    campaignId: 3,
-    campaignName: "Crypto Security Hardware",
-    campaignAddress: "CABQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGAYDAMBQGCK3",
-    affiliate: "GDXYHWE3GQR7TMMHV77NLWHSTSQ5JNUIUBN2LK2O2NXFFEKJLVYPAUCJ",
-    saleAmount: "450.0",
-    commissionAmount: "45.0",
-    timestamp: Math.floor(Date.now() / 1000 - 86400 * 9), // 9 days ago
-    status: "claimed",
-    claimed: true,
-    clearingPeriod: 604800,
-    txHash: "3f9821a9c372e90b8417c469b4e1837920ab4d9528d84172f8a846102f9e54a1",
-    ledgerSequence: 5179044,
-    memo: "StormSale-Commission-#103",
-    feeXlm: "0.00001",
-  },
-  {
-    id: 104,
-    campaignId: 4,
-    campaignName: "DeFi Yield Aggregator",
-    campaignAddress: "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526",
-    affiliate: "GDXYHWE3GQR7TMMHV77NLWHSTSQ5JNUIUBN2LK2O2NXFFEKJLVYPAUCJ",
-    saleAmount: "800.0",
-    commissionAmount: "80.0",
-    timestamp: Math.floor(Date.now() / 1000 - 86400 * 1), // 1 day ago
-    status: "pending",
-    claimed: false,
-    clearingPeriod: 604800,
-  },
-  {
-    id: 105,
-    campaignId: 1,
-    campaignName: "Tech Gadgets Pro",
-    campaignAddress: "CAAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQCAIBAEAQC526",
-    affiliate: "GDLQ3L2EV3JLBDOQCLL2TBF35TOHAZRTWM7QMP7XYQJOF4YBTJXMGQ7X",
-    saleAmount: "150.0",
-    commissionAmount: "15.0",
-    timestamp: Math.floor(Date.now() / 1000 - 3600 * 3), // 3 hours ago
-    status: "processing",
-    claimed: false,
-    clearingPeriod: 604800,
-    txHash: "f145c229987a02b489d8134bb8839217cae981274092b34914a821eef01492b4",
-    ledgerSequence: 5188402,
-    memo: "StormSale-Commission-#105",
-    feeXlm: "0.00001",
-  },
-];
+export { isValidStellarAddress };
 
-export const isValidStellarAddress = (addr?: string): boolean => {
-  if (!addr) return false;
-  return /^[GC][A-Z2-7]{55}$/.test(addr);
-};
+export interface HorizonPaymentRecord {
+  id: string;
+  type: string;
+  asset_type?: string;
+  from?: string;
+  to?: string;
+  amount?: string;
+  transaction_hash?: string;
+  created_at: string;
+}
+
+export function mapHorizonPaymentsToSales(
+  records: HorizonPaymentRecord[],
+  userAddress: string,
+): SaleRecord[] {
+  return records
+    .filter((rec) => {
+      if (rec.type !== "payment" || rec.asset_type !== "native") return false;
+      if (!rec.from || !isValidStellarAddress(rec.from)) return false;
+      if (!rec.to || !isValidStellarAddress(rec.to)) return false;
+      return rec.to === userAddress;
+    })
+    .map((rec) => {
+      const commission = rec.amount || "0.0";
+      const txHash = isValidTxHash(rec.transaction_hash) ? rec.transaction_hash : undefined;
+      return {
+        id: rec.id,
+        campaignId: 1,
+        campaignName: "Affiliate Payout Settlement",
+        campaignAddress: rec.from!,
+        affiliate: rec.to!,
+        saleAmount: "",
+        commissionAmount: commission,
+        timestamp: Math.floor(new Date(rec.created_at).getTime() / 1000),
+        status: "claimed" as const,
+        claimed: true,
+        clearingPeriod: DEFAULT_CLEARING_PERIOD,
+        txHash,
+        memo: `StormSale-Commission-#${rec.id.slice(-6)}`,
+      };
+    });
+}
+
+export async function fetchHorizonSettlements(
+  userAddress: string,
+  signal?: AbortSignal,
+): Promise<SaleRecord[]> {
+  const res = await fetch(
+    `${STELLAR_CONFIG.horizonUrl}/accounts/${userAddress}/payments?order=desc&limit=20`,
+    { signal },
+  );
+  if (!res.ok) {
+    throw new Error(`Horizon HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return mapHorizonPaymentsToSales(data._embedded?.records || [], userAddress);
+}
 
 export const isValidTxHash = (hash?: string): boolean => {
   if (!hash) return false;
@@ -319,7 +295,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
   );
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [salesLedger, setSalesLedger] = useState<SaleRecord[]>(() => initialSales || []);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => !initialSales && Boolean(userAddress));
   const [error, setError] = useState<string | null>(null);
   const [horizonStatus, setHorizonStatus] = useState<"checking" | "synchronized" | "offline">(
     "checking",
@@ -354,6 +330,18 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
     setPrevInitialSales(initialSales);
     if (initialSales) {
       setSalesLedger(initialSales);
+      setError(null);
+    }
+  }
+
+  // Render-phase state reset on account change
+  const [prevAddress, setPrevAddress] = useState(userAddress);
+  if (userAddress !== prevAddress) {
+    setPrevAddress(userAddress);
+    if (!initialSales) {
+      setSalesLedger([]);
+      setError(null);
+      setIsLoading(Boolean(userAddress));
     }
   }
 
@@ -372,42 +360,9 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
     setError(null);
 
     try {
-      const res = await fetch(
-        `${STELLAR_CONFIG.horizonUrl}/accounts/${userAddress}/payments?order=desc&limit=20`,
-      );
-      if (!res.ok) {
-        throw new Error(`Horizon HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      const records: SaleRecord[] = (data._embedded?.records || [])
-        .filter((rec: any) => {
-          if (rec.from && !isValidStellarAddress(rec.from)) return false;
-          if (rec.to && !isValidStellarAddress(rec.to)) return false;
-          return true;
-        })
-        .map((rec: any, idx: number) => {
-          const fromAddr = isValidStellarAddress(rec.from) ? rec.from : STELLAR_CONFIG.contractId;
-          const toAddr = isValidStellarAddress(rec.to) ? rec.to : userAddress;
-          const isRecipient = toAddr === userAddress;
-          const commission = parseFloat(rec.amount || "0");
-          const txHash = isValidTxHash(rec.transaction_hash) ? rec.transaction_hash : undefined;
-          return {
-            id: parseInt(rec.id?.slice(-5) || String(100 + idx), 10),
-            campaignId: 1,
-            campaignName: isRecipient ? "Affiliate Payout Settlement" : "Campaign Settlement",
-            campaignAddress: fromAddr,
-            affiliate: toAddr,
-            saleAmount: (commission * 10).toFixed(1),
-            commissionAmount: rec.amount || "0.0",
-            timestamp: Math.floor(new Date(rec.created_at).getTime() / 1000),
-            status: "claimed",
-            claimed: true,
-            clearingPeriod: DEFAULT_CLEARING_PERIOD,
-            txHash,
-            memo: `StormSale-Commission-#${rec.id?.slice(-4) || idx}`,
-          };
-        });
+      const records = await fetchHorizonSettlements(userAddress);
       setSalesLedger(records);
+      setError(null);
       setHorizonStatus("synchronized");
     } catch (err) {
       console.warn("Could not load Horizon settlement records:", err);
@@ -424,60 +379,25 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
       return;
     }
 
-    let isMounted = true;
-    fetch(`${STELLAR_CONFIG.horizonUrl}/accounts/${userAddress}/payments?order=desc&limit=20`)
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`Horizon HTTP ${res.status}`);
-        }
-        const data = await res.json();
-        if (isMounted) {
-          const records: SaleRecord[] = (data._embedded?.records || [])
-            .filter((rec: any) => {
-              if (rec.from && !isValidStellarAddress(rec.from)) return false;
-              if (rec.to && !isValidStellarAddress(rec.to)) return false;
-              return true;
-            })
-            .map((rec: any, idx: number) => {
-              const fromAddr = isValidStellarAddress(rec.from)
-                ? rec.from
-                : STELLAR_CONFIG.contractId;
-              const toAddr = isValidStellarAddress(rec.to) ? rec.to : userAddress;
-              const isRecipient = toAddr === userAddress;
-              const commission = parseFloat(rec.amount || "0");
-              const txHash = isValidTxHash(rec.transaction_hash) ? rec.transaction_hash : undefined;
-              return {
-                id: parseInt(rec.id?.slice(-5) || String(100 + idx), 10),
-                campaignId: 1,
-                campaignName: isRecipient ? "Affiliate Payout Settlement" : "Campaign Settlement",
-                campaignAddress: fromAddr,
-                affiliate: toAddr,
-                saleAmount: (commission * 10).toFixed(1),
-                commissionAmount: rec.amount || "0.0",
-                timestamp: Math.floor(new Date(rec.created_at).getTime() / 1000),
-                status: "claimed",
-                claimed: true,
-                clearingPeriod: DEFAULT_CLEARING_PERIOD,
-                txHash,
-                memo: `StormSale-Commission-#${rec.id?.slice(-4) || idx}`,
-              };
-            });
-          setSalesLedger(records);
-          setHorizonStatus("synchronized");
-          setIsLoading(false);
-        }
+    const controller = new AbortController();
+
+    fetchHorizonSettlements(userAddress, controller.signal)
+      .then((records) => {
+        setSalesLedger(records);
+        setError(null);
+        setHorizonStatus("synchronized");
+        setIsLoading(false);
       })
       .catch((err) => {
-        if (isMounted) {
-          console.warn("Could not load Horizon settlement records:", err);
-          setError("Failed to fetch on-chain settlement records from Horizon node.");
-          setHorizonStatus("offline");
-          setIsLoading(false);
-        }
+        if (controller.signal.aborted) return;
+        console.warn("Could not load Horizon settlement records:", err);
+        setError("Failed to fetch on-chain settlement records from Horizon node.");
+        setHorizonStatus("offline");
+        setIsLoading(false);
       });
 
     return () => {
-      isMounted = false;
+      controller.abort();
     };
   }, [initialSales, userAddress]);
 
@@ -526,15 +446,15 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
 
   // Summary Metrics
   const metrics = useMemo(() => {
-    const totalVolume = salesLedger.reduce((acc, s) => acc + parseFloat(s.saleAmount), 0);
+    const totalVolume = salesLedger.reduce((acc, s) => acc + (parseFloat(s.saleAmount) || 0), 0);
     const claimedCommission = salesLedger
-      .filter((s) => s.status === "claimed" || s.claimed)
-      .reduce((acc, s) => acc + parseFloat(s.commissionAmount), 0);
+      .filter((s) => getSaleStatus(s) === "claimed")
+      .reduce((acc, s) => acc + (parseFloat(s.commissionAmount) || 0), 0);
     const pendingCommission = salesLedger
-      .filter((s) => !s.claimed && (s.status === "pending" || s.status === "processing"))
-      .reduce((acc, s) => acc + parseFloat(s.commissionAmount), 0);
+      .filter((s) => getSaleStatus(s) === "pending" || getSaleStatus(s) === "processing")
+      .reduce((acc, s) => acc + (parseFloat(s.commissionAmount) || 0), 0);
     const totalVerifiedClaims = salesLedger.filter(
-      (s) => (s.status === "claimed" || s.claimed) && s.txHash,
+      (s) => getSaleStatus(s) === "claimed" && s.txHash,
     ).length;
 
     return {
@@ -545,10 +465,11 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
     };
   }, [salesLedger]);
 
-  const handleDecrypt = async (_saleId: number) => {
+  const handleDecrypt = async (sale: SaleRecord) => {
+    if (!sale.encryptedPayload) return;
     setIsDecrypting(true);
     try {
-      const decrypted = await decryptPayload("STUB_ENCRYPTED_PAYLOAD", {} as CryptoKey);
+      const decrypted = await decryptPayload(sale.encryptedPayload, {} as CryptoKey);
       setDecryptedData(decrypted);
       setIsDecryptDialogOpen(true);
     } catch (error) {
@@ -743,7 +664,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                       : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                   }`}
                 >
-                  Claimed ({salesLedger.filter((s) => s.status === "claimed" || s.claimed).length})
+                  Claimed ({salesLedger.filter((s) => getSaleStatus(s) === "claimed").length})
                 </button>
                 <button
                   onClick={() => setStatusFilter("pending")}
@@ -753,7 +674,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                       : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                   }`}
                 >
-                  Pending ({salesLedger.filter((s) => s.status === "pending" && !s.claimed).length})
+                  Pending ({salesLedger.filter((s) => getSaleStatus(s) === "pending").length})
                 </button>
                 <button
                   onClick={() => setStatusFilter("processing")}
@@ -763,7 +684,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                       : "text-zinc-500 hover:text-zinc-900 dark:hover:text-white"
                   }`}
                 >
-                  Processing ({salesLedger.filter((s) => s.status === "processing").length})
+                  Processing ({salesLedger.filter((s) => getSaleStatus(s) === "processing").length})
                 </button>
               </div>
             </div>
@@ -784,6 +705,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <ArrowUpDown className="w-4 h-4 text-zinc-400 shrink-0" />
                 <select
+                  aria-label="Sort ledger entries"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as SortOption)}
                   className="h-10 px-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-950 text-xs font-semibold text-zinc-800 dark:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full sm:w-auto"
@@ -905,7 +827,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
 
                           {/* Amount */}
                           <TableCell className="font-semibold text-xs text-zinc-700 dark:text-zinc-300 py-4">
-                            {sale.saleAmount} XLM
+                            {sale.saleAmount ? `${sale.saleAmount} XLM` : "—"}
                           </TableCell>
 
                           {/* Commission */}
@@ -1050,16 +972,18 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                                 </Button>
                               )}
 
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDecrypt(sale.id)}
-                                disabled={isDecrypting}
-                                className="rounded-lg h-8 px-3 font-semibold text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all flex items-center gap-1"
-                              >
-                                <Lock className="w-3.5 h-3.5" />
-                                {isDecrypting ? "Decrypting..." : "Decrypt"}
-                              </Button>
+                              {sale.encryptedPayload && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDecrypt(sale)}
+                                  disabled={isDecrypting}
+                                  className="rounded-lg h-8 px-3 font-semibold text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all flex items-center gap-1"
+                                >
+                                  <Lock className="w-3.5 h-3.5" />
+                                  {isDecrypting ? "Decrypting..." : "Decrypt"}
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1211,7 +1135,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                     Gross Sale Value
                   </span>
                   <p className="font-semibold text-zinc-700 dark:text-zinc-300 mt-0.5">
-                    {selectedReceipt.saleAmount} XLM
+                    {selectedReceipt.saleAmount ? `${selectedReceipt.saleAmount} XLM` : "—"}
                   </p>
                 </div>
                 <div>
@@ -1320,7 +1244,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
               Decrypted Sale Data
             </DialogTitle>
             <DialogDescription className="text-zinc-500 dark:text-zinc-400">
-              This is the verified, decrypted sale information from your client key
+              This is the decrypted sale information from your client key
             </DialogDescription>
           </DialogHeader>
           <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 mt-2">

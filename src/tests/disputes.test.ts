@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   fetchDisputes,
   submitDisputeReport,
@@ -6,6 +6,7 @@ import {
   validateDisputeAttachment,
   validateDisputeSaleAmount,
   MAX_ATTACHMENT_SIZE_BYTES,
+  resetDisputesStore,
   type DisputeReport,
   type DisputeCategory,
   type DisputeStatus,
@@ -13,6 +14,30 @@ import {
 import { handleDisputeFileProcessing } from "../components/affiliate/IssueDisputeManager";
 
 describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
+  beforeEach(() => {
+    resetDisputesStore();
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/affiliate/disputes")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [],
+        } as unknown as Response;
+      }
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      } as unknown as Response;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("fetches the list of initial mock dispute reports", async () => {
     const disputes = await fetchDisputes();
     expect(Array.isArray(disputes)).toBe(true);

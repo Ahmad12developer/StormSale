@@ -21,6 +21,8 @@ export interface DisputeReport {
   submittedAt: string;
   updatedAt: string;
   advertiserResponse?: string;
+  syncStatus?: "synced" | "pending_sync";
+  persisted?: boolean;
 }
 
 export const MAX_ATTACHMENT_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
@@ -119,17 +121,24 @@ const loadStoredDisputes = (): DisputeReport[] => {
   return initialDisputes;
 };
 
-const persistDisputes = (reports: DisputeReport[]) => {
+export const persistDisputes = (reports: DisputeReport[]): boolean => {
   if (typeof window !== "undefined" && window.localStorage) {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reports));
+      const sanitized = reports.map(({ attachmentPreview: _, ...rest }) => rest);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+      return true;
     } catch {
-      // ignore storage errors
+      return false;
     }
   }
+  return false;
 };
 
 let disputesStore: DisputeReport[] = loadStoredDisputes();
+
+export const resetDisputesStore = (custom?: DisputeReport[]) => {
+  disputesStore = custom ? [...custom] : loadStoredDisputes();
+};
 
 export const fetchDisputes = async (): Promise<DisputeReport[]> => {
   try {
@@ -137,8 +146,25 @@ export const fetchDisputes = async (): Promise<DisputeReport[]> => {
     const res = await fetch(`${API_URL}/affiliate/disputes`);
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        disputesStore = data;
+      if (Array.isArray(data)) {
+        const validServerReports = data.filter((d): d is DisputeReport =>
+          Boolean(
+            d &&
+            typeof d === "object" &&
+            typeof d.id === "string" &&
+            typeof d.campaignId === "number" &&
+            typeof d.orderReference === "string" &&
+            typeof d.status === "string",
+          ),
+        );
+        const serverMap = new Map(validServerReports.map((r) => [r.id, r]));
+        const merged = disputesStore.map((local) => serverMap.get(local.id) || local);
+        for (const s of validServerReports) {
+          if (!merged.some((m) => m.id === s.id)) {
+            merged.push(s);
+          }
+        }
+        disputesStore = merged;
         persistDisputes(disputesStore);
       }
     }
@@ -159,27 +185,39 @@ export const submitDisputeReport = async (
   const id = generateDisputeId();
   const now = new Date().toLocaleString();
 
+  let syncStatus: "synced" | "pending_sync" = "pending_sync";
+  try {
+    const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001/api";
+    const res = await fetch(`${API_URL}/affiliate/disputes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...report,
+        id,
+        status: "submitted",
+        submittedAt: now,
+        updatedAt: now,
+      }),
+    });
+    if (res.ok) {
+      syncStatus = "synced";
+    }
+  } catch {
+    syncStatus = "pending_sync";
+  }
+
   const newReport: DisputeReport = {
     ...report,
     id,
     status: "submitted",
     submittedAt: now,
     updatedAt: now,
+    syncStatus,
   };
 
   disputesStore = [newReport, ...disputesStore];
-  persistDisputes(disputesStore);
-
-  try {
-    const API_URL = import.meta.env?.VITE_API_URL || "http://localhost:3001/api";
-    await fetch(`${API_URL}/affiliate/disputes`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newReport),
-    });
-  } catch {
-    // Offline fallback retains locally persisted report
-  }
+  const persisted = persistDisputes(disputesStore);
+  newReport.persisted = persisted;
 
   return newReport;
 };

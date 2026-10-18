@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sidebar } from "../components/shared/Sidebar";
 import { ThemeToggle } from "../components/shared/ThemeToggle";
 import { JoinCampaignButton } from "../components/affiliate/JoinCampaignButton";
@@ -43,6 +43,17 @@ const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
       window.history.pushState({}, "", url.toString());
     }
   };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab");
+      setActiveTab(tab && VALID_TABS.includes(tab) ? tab : "overview");
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const tabs = [
     { id: "overview", label: "Dashboard Overview", icon: LayoutDashboard },
