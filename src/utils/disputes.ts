@@ -104,13 +104,24 @@ const initialDisputes: DisputeReport[] = [
   },
 ];
 
-const loadStoredDisputes = (): DisputeReport[] => {
+const getLocalStorage = (): Storage | null => {
   if (typeof window !== "undefined" && window.localStorage) {
+    return window.localStorage;
+  }
+  if (typeof localStorage !== "undefined") {
+    return localStorage;
+  }
+  return null;
+};
+
+const loadStoredDisputes = (): DisputeReport[] => {
+  const storage = getLocalStorage();
+  if (storage) {
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored) {
+      const stored = storage.getItem(STORAGE_KEY);
+      if (stored !== null) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
@@ -122,10 +133,11 @@ const loadStoredDisputes = (): DisputeReport[] => {
 };
 
 export const persistDisputes = (reports: DisputeReport[]): boolean => {
-  if (typeof window !== "undefined" && window.localStorage) {
+  const storage = getLocalStorage();
+  if (storage) {
     try {
       const sanitized = reports.map(({ attachmentPreview: _, ...rest }) => rest);
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+      storage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
       return true;
     } catch {
       return false;

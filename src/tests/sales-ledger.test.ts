@@ -1,12 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { getStellarExplorerLink } from "../utils/network";
 import {
   filterAndSortSales,
   escapeCsvField,
   isValidStellarAddress,
   isValidTxHash,
+  mapHorizonPaymentsToSales,
+  fetchHorizonSettlements,
   type SaleRecord,
+  type HorizonPaymentRecord,
 } from "../components/affiliate/SalesList";
+import { CONTRACT_ADDRESSES } from "../config/contracts";
 import { SALES_LEDGER } from "./fixtures/salesLedger";
 
 describe("Auditable Payout & History Ledger Suite (#51)", () => {
@@ -128,5 +132,179 @@ describe("Auditable Payout & History Ledger Suite (#51)", () => {
     expect(isValidTxHash("tx_12345")).toBe(false);
     expect(isValidTxHash("")).toBe(false);
     expect(isValidTxHash(undefined)).toBe(false);
+  });
+
+  describe("Horizon settlements mapper & fetcher (#51)", () => {
+    const userAddress = "GADNSF7745EV3D5IRWBRN6OYXMR2YYAEGLDMULGTGDKKSBVXWMMVNPW6";
+    const escrowContract = CONTRACT_ADDRESSES.CAMPAIGN_ESCROW;
+    const validHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    it("maps valid invoke_host_function native transfer from escrow to userAddress", () => {
+      const records: HorizonPaymentRecord[] = [
+        {
+          id: "op-101",
+          type: "invoke_host_function",
+          created_at: "2026-10-15T12:00:00Z",
+          transaction_hash: validHash,
+          asset_balance_changes: [
+            {
+              type: "transfer",
+              asset_type: "native",
+              from: escrowContract,
+              to: userAddress,
+              amount: "150.5000000",
+            },
+          ],
+        },
+      ];
+
+      const mapped = mapHorizonPaymentsToSales(records, userAddress);
+      expect(mapped).toHaveLength(1);
+      expect(mapped[0].id).toBe("op-101");
+      expect(mapped[0].commissionAmount).toBe("150.5000000");
+      expect(mapped[0].campaignAddress).toBe(escrowContract);
+      expect(mapped[0].affiliate).toBe(userAddress);
+      expect(mapped[0].status).toBe("claimed");
+      expect(mapped[0].claimed).toBe(true);
+      expect(mapped[0].txHash).toBe(validHash);
+      expect(mapped[0].campaignId).toBeUndefined();
+      expect(mapped[0].memo).toBeUndefined();
+    });
+
+    it("rejects classic payment records, non-native transfers, wrong recipients, and invalid addresses", () => {
+      const records: HorizonPaymentRecord[] = [
+        // Classic payment record -> reject
+        {
+          id: "op-classic",
+          type: "payment",
+          asset_type: "native",
+          from: escrowContract,
+          to: userAddress,
+          amount: "50.0",
+          created_at: "2026-10-15T12:00:00Z",
+          transaction_hash: validHash,
+        },
+        // Non-native transfer -> reject
+        {
+          id: "op-usdc",
+          type: "invoke_host_function",
+          created_at: "2026-10-15T12:00:00Z",
+          transaction_hash: validHash,
+          asset_balance_changes: [
+            {
+              type: "transfer",
+              asset_type: "credit_alphanum4",
+              asset_code: "USDC",
+              from: escrowContract,
+              to: userAddress,
+              amount: "25.0",
+            },
+          ],
+        },
+        // Wrong recipient -> reject
+        {
+          id: "op-wrong-recipient",
+          type: "invoke_host_function",
+          created_at: "2026-10-15T12:00:00Z",
+          transaction_hash: validHash,
+          asset_balance_changes: [
+            {
+              type: "transfer",
+              asset_type: "native",
+              from: escrowContract,
+              to: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+              amount: "100.0",
+            },
+          ],
+        },
+        // Invalid address -> reject
+        {
+          id: "op-invalid-addr",
+          type: "invoke_host_function",
+          created_at: "2026-10-15T12:00:00Z",
+          transaction_hash: validHash,
+          asset_balance_changes: [
+            {
+              type: "transfer",
+              asset_type: "native",
+              from: "invalid_address",
+              to: userAddress,
+              amount: "75.0",
+            },
+          ],
+        },
+      ];
+
+      const mapped = mapHorizonPaymentsToSales(records, userAddress);
+      expect(mapped).toHaveLength(0);
+    });
+
+    it("produces undefined txHash for invalid transaction_hash values", () => {
+      const records: HorizonPaymentRecord[] = [
+        {
+          id: "op-bad-hash",
+          type: "invoke_host_function",
+          created_at: "2026-10-15T12:00:00Z",
+          transaction_hash: "invalid-hash",
+          asset_balance_changes: [
+            {
+              type: "transfer",
+              asset_type: "native",
+              from: escrowContract,
+              to: userAddress,
+              amount: "80.0",
+            },
+          ],
+        },
+      ];
+
+      const mapped = mapHorizonPaymentsToSales(records, userAddress);
+      expect(mapped).toHaveLength(1);
+      expect(mapped[0].txHash).toBeUndefined();
+    });
+
+    it("fetches settlements and throws Horizon HTTP ${status} for non-OK responses", async () => {
+      const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      } as Response);
+
+      await expect(fetchHorizonSettlements(userAddress)).rejects.toThrow("Horizon HTTP 500");
+      spy.mockRestore();
+    });
+
+    it("fetches settlements and maps successful responses", async () => {
+      const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          _embedded: {
+            records: [
+              {
+                id: "op-200",
+                type: "invoke_host_function",
+                created_at: "2026-10-15T14:00:00Z",
+                transaction_hash: validHash,
+                asset_balance_changes: [
+                  {
+                    type: "transfer",
+                    asset_type: "native",
+                    from: escrowContract,
+                    to: userAddress,
+                    amount: "200.0",
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      } as Response);
+
+      const result = await fetchHorizonSettlements(userAddress);
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("op-200");
+      expect(result[0].commissionAmount).toBe("200.0");
+      spy.mockRestore();
+    });
   });
 });

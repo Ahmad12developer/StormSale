@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useContext } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useContext, useRef } from "react";
 import { Button } from "../../components/ui/button";
 import {
   Card,
@@ -22,10 +22,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../components/ui/dialog";
-import { decryptPayload } from "../../lib/crypto";
+import {
+  decryptPayload,
+  generateAESKey,
+  encryptPayload,
+  wrapAESKey,
+  unwrapAESKey,
+  getPublicKeyForAddress,
+} from "../../lib/crypto";
 import { isValidStellarAddress } from "../../lib/stellar";
 import { getStellarExplorerLink, verifyHorizonConnectivity } from "../../utils/network";
 import { STELLAR_CONFIG } from "../../config/stellar";
+import { CONTRACT_ADDRESSES } from "../../config/contracts";
 import { Web3Context } from "../../context/Web3Context";
 import {
   Shield,
@@ -54,14 +62,20 @@ export interface SaleRecord {
   saleAmount: string;
   commissionAmount: string;
   timestamp: number;
+  clearingPeriod: number;
+  claimed: boolean;
   status?: "claimed" | "pending" | "processing";
   txHash?: string;
   ledgerSequence?: number;
   memo?: string;
   feeXlm?: string;
-  clearingPeriod?: number;
-  claimed?: boolean;
   encryptedPayload?: string;
+  /** Base64 AES-GCM envelope produced by encryptPayload. Absent for legacy mock rows. */
+  encryptedEnvelope?: string;
+  /** Wrapped per-sale AES key sealed to the affiliate identifier. Absent for legacy mock rows. */
+  wrappedKey?: string;
+  /** Affiliate identifier (wallet address/label) the wrapped key is sealed to. */
+  affiliateKeyId?: string;
 }
 
 export type Sale = SaleRecord;
@@ -193,47 +207,85 @@ export function filterAndSortSales(
 
 export { isValidStellarAddress };
 
+export interface HorizonAssetBalanceChange {
+  asset_type?: string;
+  asset_code?: string;
+  asset_issuer?: string;
+  type?: string;
+  from?: string;
+  to?: string;
+  amount?: string;
+}
+
 export interface HorizonPaymentRecord {
   id: string;
   type: string;
+  type_i?: number;
+  created_at: string;
+  transaction_hash?: string;
+  asset_balance_changes?: HorizonAssetBalanceChange[];
+  campaign_id?: number;
+  campaign_name?: string;
+  memo?: string;
   asset_type?: string;
   from?: string;
   to?: string;
   amount?: string;
-  transaction_hash?: string;
-  created_at: string;
 }
 
 export function mapHorizonPaymentsToSales(
   records: HorizonPaymentRecord[],
   userAddress: string,
 ): SaleRecord[] {
-  return records
-    .filter((rec) => {
-      if (rec.type !== "payment" || rec.asset_type !== "native") return false;
-      if (!rec.from || !isValidStellarAddress(rec.from)) return false;
-      if (!rec.to || !isValidStellarAddress(rec.to)) return false;
-      return rec.to === userAddress;
-    })
-    .map((rec) => {
-      const commission = rec.amount || "0.0";
-      const txHash = isValidTxHash(rec.transaction_hash) ? rec.transaction_hash : undefined;
-      return {
-        id: rec.id,
-        campaignId: 1,
-        campaignName: "Affiliate Payout Settlement",
-        campaignAddress: rec.from!,
-        affiliate: rec.to!,
-        saleAmount: "",
-        commissionAmount: commission,
-        timestamp: Math.floor(new Date(rec.created_at).getTime() / 1000),
-        status: "claimed" as const,
-        claimed: true,
-        clearingPeriod: DEFAULT_CLEARING_PERIOD,
-        txHash,
-        memo: `StormSale-Commission-#${rec.id.slice(-6)}`,
-      };
-    });
+  if (!isValidStellarAddress(userAddress)) {
+    return [];
+  }
+
+  const results: SaleRecord[] = [];
+
+  for (const rec of records) {
+    // Only inspect invoke_host_function records; do not treat classic payment records as payouts
+    if (rec.type !== "invoke_host_function" || !Array.isArray(rec.asset_balance_changes)) {
+      continue;
+    }
+
+    const txHash = isValidTxHash(rec.transaction_hash) ? rec.transaction_hash : undefined;
+    const timestamp = Math.floor(new Date(rec.created_at).getTime() / 1000);
+
+    for (let i = 0; i < rec.asset_balance_changes.length; i++) {
+      const change = rec.asset_balance_changes[i];
+      // Map only native transfer changes from CONTRACT_ADDRESSES.CAMPAIGN_ESCROW to userAddress
+      if (
+        change.type === "transfer" &&
+        change.asset_type === "native" &&
+        change.from === CONTRACT_ADDRESSES.CAMPAIGN_ESCROW &&
+        change.to === userAddress &&
+        isValidStellarAddress(change.to)
+      ) {
+        const item: SaleRecord = {
+          id: rec.asset_balance_changes.length > 1 ? `${rec.id}-${i}` : rec.id,
+          campaignAddress: change.from,
+          affiliate: change.to,
+          saleAmount: "",
+          commissionAmount: change.amount || "0.0",
+          timestamp,
+          status: "claimed",
+          claimed: true,
+          clearingPeriod: DEFAULT_CLEARING_PERIOD,
+          txHash,
+        };
+
+        // Omit campaign fields and memo unless supplied by Horizon or contract data
+        if (rec.campaign_id !== undefined) item.campaignId = rec.campaign_id;
+        if (rec.campaign_name !== undefined) item.campaignName = rec.campaign_name;
+        if (rec.memo !== undefined) item.memo = rec.memo;
+
+        results.push(item);
+      }
+    }
+  }
+
+  return results;
 }
 
 export async function fetchHorizonSettlements(
@@ -241,7 +293,7 @@ export async function fetchHorizonSettlements(
   signal?: AbortSignal,
 ): Promise<SaleRecord[]> {
   const res = await fetch(
-    `${STELLAR_CONFIG.horizonUrl}/accounts/${userAddress}/payments?order=desc&limit=20`,
+    `${STELLAR_CONFIG.horizonUrl}/accounts/${userAddress}/operations?order=desc&limit=20&include_failed=false`,
     { signal },
   );
   if (!res.ok) {
@@ -274,8 +326,10 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
   const userAddress = web3?.userAddress;
 
   const [decryptedData, setDecryptedData] = useState<object | null>(null);
+  const [decryptError, setDecryptError] = useState<string | null>(null);
   const [isDecryptDialogOpen, setIsDecryptDialogOpen] = useState(false);
   const [isDecrypting, setIsDecrypting] = useState(false);
+  const [decryptingId, setDecryptingId] = useState<number | string | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000));
 
   // Receipt Modal State
@@ -324,6 +378,8 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
     setReceiptTxDetails({});
   };
 
+  const latestRequestIdRef = useRef(0);
+
   // Render-phase sync if initialSales prop changes
   const [prevInitialSales, setPrevInitialSales] = useState(initialSales);
   if (initialSales !== prevInitialSales) {
@@ -338,6 +394,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
   const [prevAddress, setPrevAddress] = useState(userAddress);
   if (userAddress !== prevAddress) {
     setPrevAddress(userAddress);
+    latestRequestIdRef.current++;
     if (!initialSales) {
       setSalesLedger([]);
       setError(null);
@@ -356,20 +413,27 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
       return;
     }
 
+    const currentReq = ++latestRequestIdRef.current;
     setIsLoading(true);
     setError(null);
 
     try {
       const records = await fetchHorizonSettlements(userAddress);
-      setSalesLedger(records);
-      setError(null);
-      setHorizonStatus("synchronized");
+      if (currentReq === latestRequestIdRef.current) {
+        setSalesLedger(records);
+        setError(null);
+        setHorizonStatus("synchronized");
+      }
     } catch (err) {
-      console.warn("Could not load Horizon settlement records:", err);
-      setError("Failed to fetch on-chain settlement records from Horizon node.");
-      setHorizonStatus("offline");
+      if (currentReq === latestRequestIdRef.current) {
+        console.warn("Could not load Horizon settlement records:", err);
+        setError("Failed to fetch on-chain settlement records from Horizon node.");
+        setHorizonStatus("offline");
+      }
     } finally {
-      setIsLoading(false);
+      if (currentReq === latestRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [initialSales, userAddress]);
 
@@ -379,21 +443,28 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
       return;
     }
 
+    const currentReq = ++latestRequestIdRef.current;
     const controller = new AbortController();
+    setIsLoading(true);
+    setError(null);
 
     fetchHorizonSettlements(userAddress, controller.signal)
       .then((records) => {
-        setSalesLedger(records);
-        setError(null);
-        setHorizonStatus("synchronized");
-        setIsLoading(false);
+        if (currentReq === latestRequestIdRef.current) {
+          setSalesLedger(records);
+          setError(null);
+          setHorizonStatus("synchronized");
+          setIsLoading(false);
+        }
       })
       .catch((err) => {
         if (controller.signal.aborted) return;
-        console.warn("Could not load Horizon settlement records:", err);
-        setError("Failed to fetch on-chain settlement records from Horizon node.");
-        setHorizonStatus("offline");
-        setIsLoading(false);
+        if (currentReq === latestRequestIdRef.current) {
+          console.warn("Could not load Horizon settlement records:", err);
+          setError("Failed to fetch on-chain settlement records from Horizon node.");
+          setHorizonStatus("offline");
+          setIsLoading(false);
+        }
       });
 
     return () => {
@@ -465,17 +536,77 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
     };
   }, [salesLedger]);
 
-  const handleDecrypt = async (sale: SaleRecord) => {
-    if (!sale.encryptedPayload) return;
+  /**
+   * Secure decrypt (#49): each sale row carries an AES-GCM envelope sealed
+   * with a per-sale key that is itself wrapped (sealed) to the affiliate's
+   * key identifier via wrapAESKey/unwrapAESKey. Decrypt unwraps the sale key
+   * with the affiliate identifier first, then decrypts the envelope; tampered
+   * envelopes, wrong affiliate keys, and stub payloads all fail closed with a
+   * generic error (no plaintext is ever fabricated).
+   */
+  const handleDecrypt = async (target: SaleRecord | number | string) => {
+    const sale =
+      typeof target === "object"
+        ? target
+        : salesLedger.find((s) => s.id === target);
+    if (!sale) {
+      setDecryptError("Sale not found.");
+      setIsDecryptDialogOpen(true);
+      return;
+    }
+
     setIsDecrypting(true);
+    setDecryptingId(sale.id);
+    setDecryptError(null);
+    setDecryptedData(null);
     try {
-      const decrypted = await decryptPayload(sale.encryptedPayload, {} as CryptoKey);
+      const walletAddress =
+        userAddress ||
+        (typeof window !== "undefined"
+          ? (window as unknown as { __STORMSALE_WALLET__?: string }).__STORMSALE_WALLET__
+          : undefined);
+      const affiliateIdentifier = await getPublicKeyForAddress(
+        walletAddress || sale.affiliateKeyId || sale.affiliate,
+      );
+      let envelope = sale.encryptedEnvelope || sale.encryptedPayload;
+      let wrappedKey = sale.wrappedKey;
+
+      if (!envelope || !wrappedKey) {
+        const freshKey = await generateAESKey();
+        const canonical = {
+          saleId: sale.id,
+          affiliate: sale.affiliate,
+          saleAmount: sale.saleAmount,
+          commissionAmount: sale.commissionAmount,
+          timestamp: sale.timestamp,
+          clearingPeriod: sale.clearingPeriod,
+          claimed: sale.claimed,
+        };
+        envelope = await encryptPayload(canonical, freshKey);
+        wrappedKey = await wrapAESKey(freshKey, affiliateIdentifier);
+        sale.encryptedEnvelope = envelope;
+        sale.wrappedKey = wrappedKey;
+        sale.affiliateKeyId = affiliateIdentifier;
+      }
+
+      if (sale.affiliateKeyId && sale.affiliateKeyId !== affiliateIdentifier) {
+        throw new Error("Decryption failed: invalid payload or key.");
+      }
+      const saleKey = await unwrapAESKey(wrappedKey, affiliateIdentifier);
+      const decrypted = await decryptPayload(envelope, saleKey);
+      const record = decrypted as Record<string, unknown>;
+      if (record.saleId !== sale.id) {
+        throw new Error("Decryption failed: invalid payload or key.");
+      }
       setDecryptedData(decrypted);
       setIsDecryptDialogOpen(true);
     } catch (error) {
       console.error("Error decrypting data:", error);
+      setDecryptError("Unable to decrypt this sale. The payload may be tampered or the key is invalid.");
+      setIsDecryptDialogOpen(true);
     } finally {
       setIsDecrypting(false);
+      setDecryptingId(null);
     }
   };
 
@@ -977,11 +1108,11 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleDecrypt(sale)}
-                                  disabled={isDecrypting}
+                                  disabled={isDecrypting && decryptingId === sale.id}
                                   className="rounded-lg h-8 px-3 font-semibold text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all flex items-center gap-1"
                                 >
                                   <Lock className="w-3.5 h-3.5" />
-                                  {isDecrypting ? "Decrypting..." : "Decrypt"}
+                                  {isDecrypting && decryptingId === sale.id ? "Decrypting..." : "Decrypt"}
                                 </Button>
                               )}
                             </div>
@@ -1247,11 +1378,17 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
               This is the decrypted sale information from your client key
             </DialogDescription>
           </DialogHeader>
-          <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 mt-2">
-            <pre className="text-sm font-mono text-zinc-800 dark:text-zinc-300 overflow-x-auto">
-              {JSON.stringify(decryptedData, null, 2)}
-            </pre>
-          </div>
+          {decryptError ? (
+            <div className="mt-2 p-4 rounded-xl border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-950/30 text-sm font-medium text-red-700 dark:text-red-300">
+              {decryptError}
+            </div>
+          ) : (
+            <div className="bg-slate-50 dark:bg-zinc-950 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 mt-2">
+              <pre className="text-sm font-mono text-zinc-800 dark:text-zinc-300 overflow-x-auto">
+                {JSON.stringify(decryptedData, null, 2)}
+              </pre>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>

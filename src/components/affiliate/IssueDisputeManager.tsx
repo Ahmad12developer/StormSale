@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useContext } from "react";
 import { Button } from "../../components/ui/button";
 import {
   Dialog,
@@ -28,6 +28,7 @@ import {
   type DisputeCategory,
   type DisputeStatus,
 } from "../../utils/disputes";
+import { Web3Context } from "../../context/Web3Context";
 
 export function handleDisputeFileProcessing(
   file: File,
@@ -65,12 +66,72 @@ export function handleDisputeFileProcessing(
   return true;
 }
 
-export const IssueDisputeManager: React.FC<{
+export interface DisputeFileStateHandlers {
+  setUploadedFile: (file: File | null) => void;
+  setPreviewUrl: (preview: string | null) => void;
+  setUploadError: (error: string | null) => void;
+  resetFileInput?: () => void;
+}
+
+export function createDisputeFileHandler(
+  currentFileRef: { current: File | null },
+  handlers: DisputeFileStateHandlers,
+  customFileReader?: FileReader,
+) {
+  return {
+    handleFileSelect: (file: File) => {
+      handlers.setUploadError(null);
+      currentFileRef.current = file;
+      return handleDisputeFileProcessing(
+        file,
+        {
+          onError: (errMsg) => {
+            if (currentFileRef.current === file) {
+              currentFileRef.current = null;
+              handlers.setUploadedFile(null);
+              handlers.setPreviewUrl(null);
+            }
+            handlers.setUploadError(errMsg);
+            handlers.resetFileInput?.();
+          },
+          onSuccess: (validatedFile, preview) => {
+            if (currentFileRef.current === validatedFile) {
+              handlers.setUploadedFile(validatedFile);
+              handlers.setPreviewUrl(preview);
+            }
+          },
+        },
+        customFileReader,
+      );
+    },
+    removeFile: () => {
+      currentFileRef.current = null;
+      handlers.setUploadedFile(null);
+      handlers.setPreviewUrl(null);
+      handlers.resetFileInput?.();
+    },
+  };
+}
+
+export interface IssueDisputeManagerProps {
   isOpen: boolean;
   onClose: () => void;
   onReportSubmitted?: () => void;
   initialTab?: "form" | "tracker";
-}> = ({ isOpen, onClose, onReportSubmitted, initialTab = "form" }) => {
+  userAddress?: string | null;
+}
+
+export const IssueDisputeManager: React.FC<IssueDisputeManagerProps> = ({
+  isOpen,
+  onClose,
+  onReportSubmitted,
+  initialTab = "form",
+  userAddress: propUserAddress,
+}) => {
+  const web3Context = useContext(Web3Context);
+  const activeUserAddress = propUserAddress ?? web3Context?.userAddress ?? null;
+  const affiliateRef = activeUserAddress || "GBBD5678";
+
   const [disputes, setDisputes] = useState<DisputeReport[]>([]);
   const [activeTab, setActiveTab] = useState<"form" | "tracker">(initialTab);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,7 +151,7 @@ export const IssueDisputeManager: React.FC<{
   const [campaignName, setCampaignName] = useState("Tech Gadgets Pro");
   const [orderReference, setOrderReference] = useState("");
   const [referralLinkUsed, setReferralLinkUsed] = useState(
-    "https://stormsale.xyz/c/1?ref=GBBD5678",
+    `https://stormsale.xyz/c/1?ref=${affiliateRef}`,
   );
   const [estimatedSaleAmountXlm, setEstimatedSaleAmountXlm] = useState<string>("100.0");
   const [category, setCategory] = useState<DisputeCategory>("missing_attribution");
@@ -104,10 +165,10 @@ export const IssueDisputeManager: React.FC<{
   const currentFileRef = useRef<File | null>(null);
 
   const campaigns = [
-    { id: 1, name: "Tech Gadgets Pro", link: "https://stormsale.xyz/c/1?ref=GBBD5678" },
-    { id: 2, name: "Web3 Masterclass 2026", link: "https://stormsale.xyz/c/2?ref=GBBD5678" },
-    { id: 3, name: "Crypto Security Hardware", link: "https://stormsale.xyz/c/3?ref=GBBD5678" },
-    { id: 4, name: "DeFi Yield Aggregator", link: "https://stormsale.xyz/c/4?ref=GBBD5678" },
+    { id: 1, name: "Tech Gadgets Pro", link: `https://stormsale.xyz/c/1?ref=${affiliateRef}` },
+    { id: 2, name: "Web3 Masterclass 2026", link: `https://stormsale.xyz/c/2?ref=${affiliateRef}` },
+    { id: 3, name: "Crypto Security Hardware", link: `https://stormsale.xyz/c/3?ref=${affiliateRef}` },
+    { id: 4, name: "DeFi Yield Aggregator", link: `https://stormsale.xyz/c/4?ref=${affiliateRef}` },
   ];
 
   useEffect(() => {
@@ -123,40 +184,28 @@ export const IssueDisputeManager: React.FC<{
     }
   };
 
+  const fileHandler = createDisputeFileHandler(
+    currentFileRef,
+    {
+      setUploadedFile,
+      setPreviewUrl,
+      setUploadError,
+      resetFileInput: () => {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      },
+    },
+  );
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setUploadError(null);
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      currentFileRef.current = file;
-      handleDisputeFileProcessing(file, {
-        onError: (errMsg) => {
-          if (currentFileRef.current === file) {
-            currentFileRef.current = null;
-            setUploadedFile(null);
-            setPreviewUrl(null);
-          }
-          setUploadError(errMsg);
-          if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-          }
-        },
-        onSuccess: (validatedFile, preview) => {
-          if (currentFileRef.current === validatedFile) {
-            setUploadedFile(validatedFile);
-            setPreviewUrl(preview);
-          }
-        },
-      });
+      fileHandler.handleFileSelect(e.target.files[0]);
     }
   };
 
   const removeFile = () => {
-    currentFileRef.current = null;
-    setUploadedFile(null);
-    setPreviewUrl(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    fileHandler.removeFile();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -427,7 +476,11 @@ export const IssueDisputeManager: React.FC<{
                 Calculated Expected Commission (10% rate)
               </span>
               <span className="font-extrabold text-sm text-indigo-600 dark:text-indigo-400">
-                {(parseFloat(estimatedSaleAmountXlm || "0") * 0.1).toFixed(2)} XLM
+                {(() => {
+                  const val = validateDisputeSaleAmount(estimatedSaleAmountXlm);
+                  return (val.valid && val.value !== undefined ? val.value * 0.1 : 0).toFixed(2);
+                })()}{" "}
+                XLM
               </span>
             </div>
 

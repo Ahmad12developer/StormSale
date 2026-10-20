@@ -11,10 +11,30 @@ import {
   type DisputeCategory,
   type DisputeStatus,
 } from "../utils/disputes";
-import { handleDisputeFileProcessing } from "../components/affiliate/IssueDisputeManager";
+import {
+  handleDisputeFileProcessing,
+  createDisputeFileHandler,
+} from "../components/affiliate/IssueDisputeManager";
 
 describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
+  const mockStorageStore = new Map<string, string>();
+  const mockStorage = {
+    getItem: (key: string) => mockStorageStore.get(key) ?? null,
+    setItem: (key: string, val: string) => {
+      mockStorageStore.set(key, String(val));
+    },
+    removeItem: (key: string) => {
+      mockStorageStore.delete(key);
+    },
+    clear: () => {
+      mockStorageStore.clear();
+    },
+  };
+
   beforeEach(() => {
+    mockStorageStore.clear();
+    vi.stubGlobal("window", { localStorage: mockStorage });
+    vi.stubGlobal("localStorage", mockStorage);
     resetDisputesStore();
     vi.restoreAllMocks();
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL) => {
@@ -35,6 +55,7 @@ describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -184,8 +205,10 @@ describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
   });
 
   it("ignores late FileReader preview callbacks if file selection was cleared or replaced", () => {
-    let currentSelection: File | null = null;
+    let uploadedFile: File | null = null;
     let previewResult: string | null = null;
+    let uploadError: string | null = null;
+    const currentFileRef = { current: null as File | null };
 
     const fileA = new File(["bytes A"], "fileA.png", { type: "image/png" });
     Object.defineProperty(fileA, "size", { value: 1024 });
@@ -204,24 +227,30 @@ describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
       },
     } as unknown as FileReader;
 
-    // User selects fileA
-    currentSelection = fileA;
-    handleDisputeFileProcessing(
-      fileA,
+    const handler = createDisputeFileHandler(
+      currentFileRef,
       {
-        onError: () => {},
-        onSuccess: (file, preview) => {
-          // Component guard: only set if still current selection
-          if (currentSelection === file) {
-            previewResult = preview;
-          }
+        setUploadedFile: (f) => {
+          uploadedFile = f;
+        },
+        setPreviewUrl: (p) => {
+          previewResult = p;
+        },
+        setUploadError: (err) => {
+          uploadError = err;
         },
       },
       delayedFileReader,
     );
 
+    // User selects fileA
+    handler.handleFileSelect(fileA);
+    expect(currentFileRef.current).toBe(fileA);
+
     // User removes file before FileReader completes
-    currentSelection = null;
+    handler.removeFile();
+    expect(currentFileRef.current).toBeNull();
+    expect(uploadedFile).toBeNull();
 
     // Late FileReader callback fires
     if (pendingOnload) {
@@ -230,6 +259,14 @@ describe("Issue Reporting & Dispute Protocol Suite (#55)", () => {
 
     // Preview should NOT be set because selection was cleared
     expect(previewResult).toBeNull();
+    expect(uploadError).toBeNull();
+  });
+
+  it("preserves empty dispute list when localStorage has an empty array", async () => {
+    mockStorage.setItem("stormsale_disputes_ledger", JSON.stringify([]));
+    resetDisputesStore();
+    const disputes = await fetchDisputes();
+    expect(disputes).toEqual([]);
   });
 
   it("rejects non-positive sale amount in submitDisputeReport", async () => {

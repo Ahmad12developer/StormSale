@@ -1,41 +1,54 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Sidebar } from "../components/shared/Sidebar";
 import { ThemeToggle } from "../components/shared/ThemeToggle";
 import { JoinCampaignButton } from "../components/affiliate/JoinCampaignButton";
 import { SalesList } from "../components/affiliate/SalesList";
 import { ClaimPayouts } from "../components/affiliate/ClaimPayouts";
 import { AffiliateOverview } from "../components/affiliate/AffiliateOverview";
-import { AffiliateSettings } from "../components/affiliate/AffiliateSettings";
-import { Users, TrendingUp, DollarSign, Shield, LayoutDashboard, Sliders } from "lucide-react";
+import { TelegramCampaignBrowser } from "../components/affiliate/TelegramCampaignBrowser";
+import {
+  Users,
+  TrendingUp,
+  DollarSign,
+  Shield,
+  LayoutDashboard,
+  Send,
+  Sliders,
+} from "lucide-react";
 import { NotificationProvider } from "../context/NotificationContext";
+import { usePreference } from "../hooks/usePreference";
 import { motion, AnimatePresence } from "framer-motion";
+import { isTelegramMiniApp } from "../lib/telegram";
+import { AffiliateSettings } from "../components/affiliate/AffiliateSettings";
 import { Button } from "../components/ui/button";
+
 
 interface AffiliateProps {
   onBack: () => void;
 }
 
-const VALID_TABS = [
+const AFFILIATE_TABS = [
   "overview",
+  "telegram-browser",
   "join-campaign",
   "my-sales",
   "claim-payouts",
   "settings",
   "security",
-];
+] as const;
+type AffiliateTab = (typeof AFFILIATE_TABS)[number];
 
 const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tab = params.get("tab");
-      return tab && VALID_TABS.includes(tab) ? tab : "overview";
-    }
-    return "overview";
-  });
+  const [activeTab, setActiveTab] = usePreference<AffiliateTab>(
+    "stormsale.affiliate.tab",
+    isTelegramMiniApp() ? "telegram-browser" : "overview",
+    (v) => AFFILIATE_TABS.includes(v as AffiliateTab),
+  );
 
   const handleTabChange = (tabId: string) => {
-    const target = VALID_TABS.includes(tabId) ? tabId : "overview";
+    const target = AFFILIATE_TABS.includes(tabId as AffiliateTab)
+      ? (tabId as AffiliateTab)
+      : "overview";
     setActiveTab(target);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -45,18 +58,28 @@ const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
   };
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab");
+      if (tab && AFFILIATE_TABS.includes(tab as AffiliateTab)) {
+        setActiveTab(tab as AffiliateTab);
+      }
+    }
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab");
-      setActiveTab(tab && VALID_TABS.includes(tab) ? tab : "overview");
+      if (tab && AFFILIATE_TABS.includes(tab as AffiliateTab)) {
+        setActiveTab(tab as AffiliateTab);
+      }
     };
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [setActiveTab]);
 
   const tabs = [
     { id: "overview", label: "Dashboard Overview", icon: LayoutDashboard },
+    { id: "telegram-browser", label: "Telegram Campaigns", icon: Send },
     { id: "join-campaign", label: "Join Campaign", icon: Users },
     { id: "my-sales", label: "My Sales & Commissions", icon: DollarSign },
     { id: "claim-payouts", label: "Claim Payouts", icon: TrendingUp },
@@ -66,6 +89,8 @@ const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
 
   const renderContent = () => {
     switch (activeTab) {
+      case "telegram-browser":
+        return <TelegramCampaignBrowser />;
       case "join-campaign":
         return <JoinCampaignButton />;
       case "my-sales":
