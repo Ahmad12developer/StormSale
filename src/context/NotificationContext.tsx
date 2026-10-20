@@ -1,10 +1,18 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 import type { ReactNode } from "react";
 import {
   CheckCircle2,
   XCircle,
   AlertCircle,
   AlertTriangle,
+  Loader2,
   X,
   Receipt,
   Sparkles,
@@ -25,7 +33,7 @@ import {
 import { Button } from "../components/ui/button";
 import { getStellarExplorerLink } from "../utils/network";
 
-export type NotificationType = "success" | "error" | "warning" | "info";
+export type NotificationType = "success" | "error" | "warning" | "info" | "pending";
 
 export interface NotificationReceipt {
   txHash?: string;
@@ -137,7 +145,7 @@ export interface NotificationContextType {
   clearAllNotifications: () => void;
 }
 
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+export const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export const isRewardTitle = (title: string): boolean => {
   const lower = title.toLowerCase();
@@ -200,7 +208,7 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         ...notification,
         id,
         persistent: isPersistent,
-        duration: isPersistent ? 0 : (notification.duration ?? 6000),
+        duration: isPersistent ? 0 : (notification.duration ?? 5000),
       };
 
       setNotifications((prev) => [...prev, newNotification]);
@@ -214,16 +222,9 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
         triggerConfetti();
       }
 
-      // Only set auto-dismiss timeout if notification is NOT persistent
-      if (!isPersistent && newNotification.duration && newNotification.duration > 0) {
-        setTimeout(() => {
-          dismissNotification(id);
-        }, newNotification.duration);
-      }
-
       return id;
     },
-    [triggerConfetti, dismissNotification],
+    [triggerConfetti],
   );
 
   const notifyLowEscrowBalance = useCallback(
@@ -287,10 +288,70 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   );
 };
 
-const NotificationContainer: React.FC = () => {
-  const { notifications, dismissNotification, openReceiptModal } = useNotification();
+interface ToastItemProps {
+  notification: Notification;
+  onDismiss: (id: string) => void;
+  onReceiptClick?: (notification: Notification) => void;
+}
 
-  const getIcon = (type: NotificationType, isReward: boolean) => {
+const ToastItem: React.FC<ToastItemProps> = ({ notification, onDismiss, onReceiptClick }) => {
+  const isAutoDismiss = !notification.persistent && (notification.duration ?? 0) > 0;
+  const duration = notification.duration ?? 5000;
+
+  const [remainingTime, setRemainingTime] = useState<number>(duration);
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const startTimeRef = useRef<number>(Date.now());
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-dismiss countdown with hover-to-pause
+  useEffect(() => {
+    if (!isAutoDismiss) return;
+
+    if (isPaused) {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      return;
+    }
+
+    startTimeRef.current = Date.now();
+    timerRef.current = setTimeout(() => {
+      onDismiss(notification.id);
+    }, remainingTime);
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [isAutoDismiss, isPaused, remainingTime, notification.id, onDismiss]);
+
+  const handleMouseEnter = () => {
+    if (!isAutoDismiss) return;
+    const elapsed = Date.now() - startTimeRef.current;
+    setRemainingTime((prev) => Math.max(0, prev - elapsed));
+    setIsPaused(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (!isAutoDismiss) return;
+    setIsPaused(false);
+  };
+
+  const isReward =
+    notification.confetti ||
+    (notification.type === "success" && isRewardTitle(notification.title));
+
+  const hasReceipt = Boolean(
+    notification.receipt || notification.receiptUrl || notification.onViewReceipt,
+  );
+
+  const actionLabel = notification.actionLabel || notification.action?.label;
+  const actionUrl = notification.actionUrl || notification.action?.url;
+
+  const getIcon = (type: NotificationType) => {
     if (isReward) {
       return (
         <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center shadow-md shrink-0 animate-bounce">
@@ -300,19 +361,21 @@ const NotificationContainer: React.FC = () => {
     }
     switch (type) {
       case "success":
-        return <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />;
+        return <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />;
       case "error":
-        return <XCircle className="w-5 h-5 text-rose-500 shrink-0" />;
+        return <XCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />;
       case "warning":
-        return <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />;
+        return <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />;
+      case "pending":
+        return <Loader2 className="w-5 h-5 text-indigo-500 animate-spin shrink-0 mt-0.5" />;
       case "info":
-        return <AlertCircle className="w-5 h-5 text-indigo-500 shrink-0" />;
+        return <AlertCircle className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />;
       default:
-        return <AlertCircle className="w-5 h-5 text-slate-500 shrink-0" />;
+        return <AlertCircle className="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />;
     }
   };
 
-  const getBackgroundColor = (type: NotificationType, isReward: boolean) => {
+  const getBackgroundColor = (type: NotificationType) => {
     if (isReward) {
       return "bg-gradient-to-br from-white via-indigo-50/50 to-amber-50/40 dark:from-zinc-900 dark:via-zinc-900 dark:to-indigo-950/40 border-indigo-200 dark:border-indigo-500/40 shadow-xl shadow-indigo-500/10";
     }
@@ -323,12 +386,179 @@ const NotificationContainer: React.FC = () => {
         return "bg-white dark:bg-zinc-900 border-rose-300 dark:border-rose-800/80 shadow-rose-500/10";
       case "warning":
         return "bg-white dark:bg-zinc-900 border-amber-300 dark:border-amber-800/80 shadow-amber-500/10";
+      case "pending":
+        return "bg-white dark:bg-zinc-900 border-indigo-300 dark:border-indigo-800/80 shadow-indigo-500/10";
       case "info":
         return "bg-white dark:bg-zinc-900 border-indigo-300 dark:border-indigo-800/80 shadow-indigo-500/10";
       default:
         return "bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 shadow-zinc-500/10";
     }
   };
+
+  const getProgressBarColor = (type: NotificationType) => {
+    switch (type) {
+      case "success":
+        return "bg-emerald-500";
+      case "error":
+        return "bg-rose-500";
+      case "warning":
+        return "bg-amber-500";
+      case "pending":
+        return "bg-indigo-500";
+      case "info":
+        return "bg-indigo-500";
+      default:
+        return "bg-zinc-500";
+    }
+  };
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: -16, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
+      transition={{ type: "spring", stiffness: 350, damping: 25 }}
+      role="alert"
+      aria-live="polite"
+      data-testid="notification-toast"
+      data-type={notification.type}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className={`relative p-4 rounded-2xl border shadow-xl backdrop-blur-md overflow-hidden pointer-events-auto ${getBackgroundColor(
+        notification.type,
+      )} ${notification.persistent ? "ring-2 ring-amber-400/20" : ""}`}
+    >
+      <div className="flex items-start space-x-3">
+        {getIcon(notification.type)}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="font-bold text-sm text-zinc-900 dark:text-white leading-tight">
+              {notification.title}
+            </h4>
+            <div className="flex items-center gap-1 shrink-0">
+              {isReward && (
+                <span className="inline-flex items-center text-[10px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
+                  Reward
+                </span>
+              )}
+              {notification.persistent ? (
+                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                  Persistent Alert
+                </span>
+              ) : notification.type === "pending" ? (
+                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800">
+                  In Progress
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          {notification.message && (
+            <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1.5 leading-relaxed break-words">
+              {notification.message}
+            </p>
+          )}
+
+          {/* Interactive Action: Link or Button to flow */}
+          {actionLabel && (
+            <div className="mt-3 flex items-center gap-2 pt-1">
+              {actionUrl ? (
+                <a
+                  href={actionUrl}
+                  onClick={() => {
+                    if (notification.onAction) notification.onAction();
+                    if (notification.action?.onClick) notification.action.onClick();
+                    onDismiss(notification.id);
+                  }}
+                  className="inline-flex items-center text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm transition-all"
+                >
+                  <span>{actionLabel}</span>
+                  <ExternalLink className="w-3.5 h-3.5 ml-1.5 opacity-90" />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (notification.onAction) notification.onAction();
+                    if (notification.action?.onClick) notification.action.onClick();
+                    onDismiss(notification.id);
+                  }}
+                  className="inline-flex items-center text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm transition-all"
+                >
+                  <span>{actionLabel}</span>
+                  <ArrowRight className="w-3.5 h-3.5 ml-1.5 opacity-90" />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onDismiss(notification.id)}
+                className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 font-semibold px-2 py-1 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* "View Receipt" Action Button */}
+          {hasReceipt && (
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => onReceiptClick?.(notification)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition-all shadow-sm shadow-indigo-500/20"
+              >
+                <Receipt className="w-3.5 h-3.5" />
+                <span>View Receipt</span>
+                <ExternalLink className="w-3 h-3 opacity-70" />
+              </button>
+              {notification.receipt?.confirmed === true && (
+                <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">
+                  On-chain Verified
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onDismiss(notification.id)}
+          className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors p-1 -mr-1 -mt-1 rounded-lg"
+          aria-label="Close notification"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Visual Progress Indicator for Dismissal Time */}
+      {isAutoDismiss && (
+        <div
+          data-testid="toast-progress-bar"
+          className="absolute bottom-0 left-0 right-0 h-1 bg-slate-100 dark:bg-zinc-800/80 overflow-hidden"
+        >
+          <motion.div
+            initial={{ width: "100%" }}
+            animate={{ width: isPaused ? undefined : "0%" }}
+            transition={{
+              duration: remainingTime / 1000,
+              ease: "linear",
+            }}
+            role="progressbar"
+            aria-label="Dismissal progress"
+            className={`h-full ${getProgressBarColor(notification.type)}`}
+          />
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
+const NotificationContainer: React.FC = () => {
+  const { notifications, dismissNotification, openReceiptModal } = useNotification();
+
+  if (notifications.length === 0) return null;
 
   const handleReceiptClick = (notification: Notification) => {
     if (notification.onViewReceipt) {
@@ -341,130 +571,19 @@ const NotificationContainer: React.FC = () => {
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-3 max-w-sm sm:max-w-md w-full px-4 sm:px-0 pointer-events-none">
-      <AnimatePresence>
-        {notifications.map((notification) => {
-          const isReward =
-            notification.confetti ||
-            (notification.type === "success" && isRewardTitle(notification.title));
-
-          const hasReceipt = Boolean(
-            notification.receipt || notification.receiptUrl || notification.onViewReceipt,
-          );
-
-          const actionLabel = notification.actionLabel || notification.action?.label;
-          const actionUrl = notification.actionUrl || notification.action?.url;
-
-          return (
-            <motion.div
-              key={notification.id}
-              role="alert"
-              initial={{ opacity: 0, y: -20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              className={`p-4 rounded-2xl border shadow-xl pointer-events-auto backdrop-blur-md transition-all ${getBackgroundColor(
-                notification.type,
-                Boolean(isReward),
-              )} ${notification.persistent ? "ring-2 ring-amber-400/20" : ""}`}
-            >
-              <div className="flex items-start space-x-3">
-                {getIcon(notification.type, Boolean(isReward))}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-bold text-sm text-zinc-900 dark:text-white leading-tight">
-                      {notification.title}
-                    </h4>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {isReward && (
-                        <span className="inline-flex items-center text-[10px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
-                          Reward
-                        </span>
-                      )}
-                      {notification.persistent && (
-                        <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                          Persistent Alert
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {notification.message && (
-                    <p className="text-xs text-zinc-600 dark:text-zinc-300 mt-1 leading-relaxed break-words">
-                      {notification.message}
-                    </p>
-                  )}
-
-                  {/* Interactive Action: Link or Button to "Top Up" flow */}
-                  {actionLabel && (
-                    <div className="mt-3 flex items-center gap-2 pt-1">
-                      {actionUrl ? (
-                        <a
-                          href={actionUrl}
-                          onClick={() => {
-                            if (notification.onAction) notification.onAction();
-                            if (notification.action?.onClick) notification.action.onClick();
-                            dismissNotification(notification.id);
-                          }}
-                          className="inline-flex items-center text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm transition-all"
-                        >
-                          <span>{actionLabel}</span>
-                          <ExternalLink className="w-3.5 h-3.5 ml-1.5 opacity-90" />
-                        </a>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (notification.onAction) notification.onAction();
-                            if (notification.action?.onClick) notification.action.onClick();
-                            dismissNotification(notification.id);
-                          }}
-                          className="inline-flex items-center text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-sm transition-all"
-                        >
-                          <span>{actionLabel}</span>
-                          <ArrowRight className="w-3.5 h-3.5 ml-1.5 opacity-90" />
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => dismissNotification(notification.id)}
-                        className="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 font-semibold px-2 py-1 transition-colors"
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  )}
-
-                  {/* "View Receipt" Action Button */}
-                  {hasReceipt && (
-                    <div className="mt-3 pt-2 border-t border-slate-100 dark:border-zinc-800/80 flex items-center justify-between">
-                      <button
-                        onClick={() => handleReceiptClick(notification)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition-all shadow-sm shadow-indigo-500/20"
-                      >
-                        <Receipt className="w-3.5 h-3.5" />
-                        <span>View Receipt</span>
-                        <ExternalLink className="w-3 h-3 opacity-70" />
-                      </button>
-                      <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-medium">
-                        On-chain Verified
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => dismissNotification(notification.id)}
-                  className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors shrink-0 p-1 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800"
-                  aria-label="Close notification"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </motion.div>
-          );
-        })}
+    <div
+      aria-label="Notifications"
+      className="fixed top-4 right-4 z-50 space-y-3 max-w-sm sm:max-w-md w-full px-4 sm:px-0 pointer-events-none"
+    >
+      <AnimatePresence mode="popLayout">
+        {notifications.map((notification) => (
+          <ToastItem
+            key={notification.id}
+            notification={notification}
+            onDismiss={dismissNotification}
+            onReceiptClick={handleReceiptClick}
+          />
+        ))}
       </AnimatePresence>
     </div>
   );

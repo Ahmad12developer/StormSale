@@ -1,9 +1,15 @@
-import React, { Suspense, useState, lazy } from "react";
+import React, { Suspense, useState, useEffect, useRef, lazy } from "react";
 import { Web3Provider } from "./context/Web3Context";
 import { WalletConnectProvider } from "./context/WalletConnectContext";
-import { NotificationProvider, NotificationWrapper } from "./context/NotificationContext";
+import {
+  NotificationProvider,
+  NotificationWrapper,
+  useNotification,
+} from "./context/NotificationContext";
 import { useWeb3 } from "./hooks/useWeb3";
+import { usePreference } from "./hooks/usePreference";
 import { ConnectWalletModal } from "./components/shared/ConnectWalletModal";
+import { initTelegramWebApp, syncTelegramTheme, isTelegramMiniApp } from "./lib/telegram";
 import { loadBrandConfig } from "./lib/branding";
 
 // Lazy-loaded routes and role-specific dashboards
@@ -46,7 +52,7 @@ class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; error?: Error }
 > {
-  constructor(props: any) {
+  constructor(props: { children: React.ReactNode }) {
     super(props);
     this.state = { hasError: false };
   }
@@ -55,8 +61,7 @@ class ErrorBoundary extends React.Component<
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: any) {
-    // You can log error to an external service here
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("Unhandled error caught by ErrorBoundary:", error, info);
   }
 
@@ -84,15 +89,37 @@ class ErrorBoundary extends React.Component<
   }
 }
 
+const VALID_PAGES = [
+  "dashboard",
+  "advertiser",
+  "affiliate",
+  "auditor",
+] as const;
+
+type Page = (typeof VALID_PAGES)[number];
+
 function Router() {
   const { isConnected, connectWallet } = useWeb3();
-  const [currentPage, setCurrentPage] = useState(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      return params.get("page") || "dashboard";
+  const { showNotification } = useNotification();
+  const [tmaMode, setTmaMode] = useState(() => isTelegramMiniApp());
+
+  const [currentPage, setCurrentPage] = usePreference<Page>(
+    "stormsale.app.currentPage",
+    isTelegramMiniApp() ? "affiliate" : "dashboard",
+    (value) => VALID_PAGES.includes(value as Page),
+  );
+
+  const prevConnectedRef = useRef(isConnected);
+
+  useEffect(() => {
+    // Only reset to "dashboard" after isConnected transitions from true to false,
+    // preserving saved page state on initial load / reload.
+    if (prevConnectedRef.current && !isConnected) {
+      setCurrentPage("dashboard");
     }
-    return "dashboard";
-  });
+    prevConnectedRef.current = isConnected;
+  }, [isConnected, setCurrentPage]);
+
   const [activeBrandSubdomain, setActiveBrandSubdomain] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const params = new URLSearchParams(window.location.search);
@@ -104,13 +131,55 @@ function Router() {
     Boolean(import.meta.env.DEV) &&
     new URLSearchParams(window.location.search).get("mock") === "true";
 
-  React.useEffect(() => {
-    if (isMock && !isConnected) {
+  const hasAutoConnectedMock = useRef(false);
+
+  useEffect(() => {
+    if (isMock && !isConnected && !hasAutoConnectedMock.current) {
+      hasAutoConnectedMock.current = true;
       connectWallet("mock").catch((err) => {
         console.error("Mock wallet connection failed:", err);
+        showNotification({
+          type: "error",
+          title: "Wallet Connection Failed",
+          message: err instanceof Error ? err.message : "Failed to connect mock wallet.",
+        });
       });
     }
-  }, [isMock, isConnected, connectWallet]);
+  }, [isMock, isConnected, connectWallet, showNotification]);
+
+  const handleNavigate = (page: string) => {
+    if (VALID_PAGES.includes(page as Page)) {
+      setCurrentPage(page as Page);
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.set("page", page);
+        window.history.pushState({}, "", url.toString());
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const pageParam = params.get("page");
+      if (pageParam && VALID_PAGES.includes(pageParam as Page)) {
+        setCurrentPage(pageParam as Page);
+      }
+    }
+
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const pageParam = params.get("page");
+      if (pageParam && VALID_PAGES.includes(pageParam as Page)) {
+        setCurrentPage(pageParam as Page);
+      } else {
+        setCurrentPage("dashboard");
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [setCurrentPage]);
 
   if (activeBrandSubdomain) {
     return (
@@ -131,19 +200,36 @@ function Router() {
     <>
       <ConnectWalletModal />
       <Suspense fallback={<PageLoader />}>
-        {!isConnected && !isMock ? (
+        {!isConnected && !isMock && !tmaMode ? (
           <Landing />
         ) : (
           <div className="min-h-screen bg-background">
             <main>
-              {currentPage === "dashboard" && <Dashboard onNavigate={setCurrentPage} />}
+              {currentPage === "dashboard" && <Dashboard onNavigate={handleNavigate} />}
               {currentPage === "advertiser" && (
-                <Advertiser onBack={() => setCurrentPage("dashboard")} />
+                <Suspense fallback={<div className="p-8 text-center">Loading Advertiser...</div>}>
+                  <Advertiser onBack={() => handleNavigate("dashboard")} />
+                </Suspense>
               )}
               {currentPage === "affiliate" && (
-                <Affiliate onBack={() => setCurrentPage("dashboard")} />
+                <Suspense fallback={<div className="p-8 text-center">Loading Affiliate...</div>}>
+                  <Affiliate
+                    onBack={() => {
+                      if (isConnected) {
+                        handleNavigate("dashboard");
+                      } else {
+                        setTmaMode(false);
+                        handleNavigate("dashboard");
+                      }
+                    }}
+                  />
+                </Suspense>
               )}
-              {currentPage === "auditor" && <Auditor onBack={() => setCurrentPage("dashboard")} />}
+              {currentPage === "auditor" && (
+                <Suspense fallback={<div className="p-8 text-center">Loading Auditor...</div>}>
+                  <Auditor onBack={() => handleNavigate("dashboard")} />
+                </Suspense>
+              )}
             </main>
           </div>
         )}
@@ -153,6 +239,14 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    initTelegramWebApp();
+    const cleanup = syncTelegramTheme();
+    return () => {
+      cleanup();
+    };
+  }, []);
+
   return (
     <NotificationWrapper>
       <ErrorBoundary>

@@ -37,6 +37,7 @@ import {
   type ConversionAnalyticsSummary,
 } from "../../utils/api";
 import { useNotification } from "../../context/NotificationContext";
+import { useWeb3 } from "../../context/Web3Context";
 
 const getErrorMessage = (err: unknown, fallback: string): string => {
   return err instanceof Error && err.message ? err.message : fallback;
@@ -44,9 +45,11 @@ const getErrorMessage = (err: unknown, fallback: string): string => {
 
 export const PerformanceAnalytics = () => {
   const { showNotification } = useNotification();
+  const { userAddress } = useWeb3();
   const [links, setLinks] = useState<ActiveLinkAnalytics[]>([]);
   const [summary, setSummary] = useState<ConversionAnalyticsSummary | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [fetchStatus, setFetchStatus] = useState<"synced" | "offline">("offline");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<"24h" | "7d" | "30d" | "all">("7d");
   const [simulatingId, setSimulatingId] = useState<string | null>(null);
@@ -61,13 +64,14 @@ export const PerformanceAnalytics = () => {
     async (showToast = false, range: "24h" | "7d" | "30d" | "all" = timeRange) => {
       setIsSyncing(true);
       try {
-        const data = await fetchAffiliateConversionData(undefined, range);
+        const data = await fetchAffiliateConversionData(userAddress || undefined, range);
         // Discard results for an obsolete time range
         if (activeRangeRef.current !== range) {
           return;
         }
         setLinks(data.links);
         setSummary(data.summary);
+        setFetchStatus("synced");
         if (showToast) {
           showNotification({
             type: "success",
@@ -77,6 +81,7 @@ export const PerformanceAnalytics = () => {
         }
       } catch (error: unknown) {
         console.error("Failed to sync conversion data:", error);
+        setFetchStatus("offline");
         if (showToast) {
           showNotification({
             type: "error",
@@ -93,7 +98,7 @@ export const PerformanceAnalytics = () => {
         }
       }
     },
-    [showNotification, timeRange],
+    [showNotification, timeRange, userAddress],
   );
 
   useEffect(() => {
@@ -138,10 +143,10 @@ export const PerformanceAnalytics = () => {
     setSimulatingId(linkId);
     try {
       const currentRange = activeRangeRef.current;
-      const updated = await recordLinkClick(linkId, currentRange);
+      const updated = await recordLinkClick(linkId, currentRange, userAddress || undefined);
       setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
       // Refresh summary for the currently active range
-      const data = await fetchAffiliateConversionData(undefined, currentRange);
+      const data = await fetchAffiliateConversionData(userAddress || undefined, currentRange);
       if (activeRangeRef.current === currentRange) {
         setSummary(data.summary);
       }
@@ -166,9 +171,9 @@ export const PerformanceAnalytics = () => {
     setSimulatingId(linkId);
     try {
       const currentRange = activeRangeRef.current;
-      const updated = await recordLinkConversion(linkId, 100, currentRange);
+      const updated = await recordLinkConversion(linkId, 100, currentRange, userAddress || undefined);
       setLinks((prev) => prev.map((l) => (l.id === linkId ? updated : l)));
-      const data = await fetchAffiliateConversionData(undefined, currentRange);
+      const data = await fetchAffiliateConversionData(userAddress || undefined, currentRange);
       if (activeRangeRef.current === currentRange) {
         setSummary(data.summary);
       }
@@ -231,10 +236,17 @@ export const PerformanceAnalytics = () => {
             <h1 className="text-2xl md:text-3xl font-extrabold text-zinc-900 dark:text-white tracking-tight">
               Real-Time CVR & Conversion Analytics
             </h1>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
-              Live Synced
-            </span>
+            {fetchStatus === "synced" ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
+                Live Synced
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
+                <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                Offline / Stale
+              </span>
+            )}
           </div>
           <p className="text-zinc-500 dark:text-zinc-400 mt-2 font-medium">
             Track active referral link performance, click-to-sale ratios, and automated conversion
