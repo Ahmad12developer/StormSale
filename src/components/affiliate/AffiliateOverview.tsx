@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect } from "react";
+import { TerminologyTooltip, TerminologyGuideButton } from "../../components/ui/tooltip";
 import QRCode from "qrcode";
 import {
   Card,
@@ -327,16 +328,20 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
             Affiliate Dashboard
           </h1>
           <p className="text-zinc-500 dark:text-zinc-400 mt-2 font-medium">
-            Track your performance, real-time conversion rates, and maximize your on-chain earnings.
+            Track your performance, real-time conversion rates, and maximize your{" "}
+            <TerminologyTooltip term="soroban">on-chain earnings</TerminologyTooltip>.
           </p>
         </div>
-        <Button
-          onClick={() => onNavigateTab?.("performance")}
-          className="mt-6 lg:mt-0 bg-zinc-900 hover:bg-zinc-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white rounded-full px-6 h-12 font-semibold shadow-md transition-all gap-2"
-        >
-          <BarChart3 className="w-5 h-5" />
-          View CVR Analytics
-        </Button>
+        <div className="mt-6 lg:mt-0 flex flex-wrap items-center gap-3">
+          <TerminologyGuideButton className="h-12 px-5 rounded-full" />
+          <Button
+            onClick={() => onNavigateTab?.("performance")}
+            className="bg-zinc-900 hover:bg-zinc-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white rounded-full px-6 h-12 font-semibold shadow-md transition-all gap-2"
+          >
+            <BarChart3 className="w-5 h-5" />
+            View CVR Analytics
+          </Button>
+        </div>
       </div>
 
       {/* Stats Grid */}
