@@ -29,7 +29,6 @@ import {
 } from "./AffiliateSettings";
 import { resolveActiveSplitPlan, formatStroopsAsXlm } from "../../lib/commissionSplit";
 import { motion, AnimatePresence } from "framer-motion";
-import { getStellarExplorerLink } from "../../utils/network";
 
 export const ClaimPayouts = () => {
   const { userAddress, batchClaimPayoutsOnChain, claimPayoutOnChain } = useWeb3();
@@ -72,14 +71,7 @@ export const ClaimPayouts = () => {
 
   // 1-Click Automated Batch Claim Dispatcher
   const handleBatchClaim = async () => {
-    if (selectedCampaigns.length === 0 || totalWithdrawableXlm <= 0) {
-      showNotification({
-        type: "error",
-        title: "No Claimable Campaigns",
-        message: "Please select at least one campaign with a matured claimable balance.",
-      });
-      return;
-    }
+    if (selectedCampaigns.length === 0) return;
 
     setIsBatchClaiming(true);
     showNotification({
@@ -93,18 +85,6 @@ export const ClaimPayouts = () => {
       // total is routed across vault destinations inside the same atomic envelope.
       const splitPlan = resolveActiveSplitPlan(loadAffiliatePreferences());
       const resultReceipt = await batchClaimPayoutsOnChain(selectedCampaigns, splitPlan);
-      if (!resultReceipt.success || resultReceipt.totalClaimedXlm <= 0) {
-        throw new Error("Batch claim transaction did not return a valid payout amount.");
-      }
-      if (!resultReceipt.confirmed) {
-        showNotification({
-          type: "error",
-          title: "Claim Not Confirmed",
-          message:
-            "Transaction was not confirmed on the Stellar ledger. Simulated and fallback results cannot be claimed.",
-        });
-        return;
-      }
       setReceipt(resultReceipt);
 
       // Mark claimed campaigns
@@ -113,32 +93,19 @@ export const ClaimPayouts = () => {
       );
       setSelectedIds([]);
 
-      const txHash = resultReceipt.txHash || undefined;
-      const receiptUrl = txHash ? getStellarExplorerLink("tx", txHash) : undefined;
-
       if (shouldDeliverAffiliateNotification("payout")) {
         showNotification({
           type: "success",
-          title: "Commission Paid Out!",
-          message: `Claimed ${resultReceipt.totalClaimedXlm.toFixed(2)} XLM across ${resultReceipt.itemizedClaims.length} campaigns in 1 transaction. Settled on Soroban Smart Contract.`,
-          confetti: true,
-          receiptUrl,
-          receipt: {
-            txHash,
-            amount: `${resultReceipt.totalClaimedXlm.toFixed(2)} XLM`,
-            campaign: `Batch Claim (${resultReceipt.itemizedClaims.length} campaigns)`,
-            date: new Date().toLocaleString(),
-            explorerUrl: receiptUrl,
-            confirmed: true,
-          },
+          title: "Batch Commission Claim Settled!",
+          message: `Claimed ${resultReceipt.totalClaimedXlm} XLM across ${resultReceipt.itemizedClaims.length} campaigns in 1 transaction.`,
         });
       }
-    } catch (err: unknown) {
+    } catch (err: any) {
       console.error("Batch claim failure:", err);
       showNotification({
         type: "error",
         title: "Batch Claim Failed",
-        message: err instanceof Error ? err.message : "Failed to execute batch claim transaction.",
+        message: err.message || "Failed to execute batch claim transaction.",
       });
     } finally {
       setIsBatchClaiming(false);
@@ -147,70 +114,31 @@ export const ClaimPayouts = () => {
 
   // Individual campaign claim fallback
   const handleSingleClaim = async (campaignId: number) => {
-    const targetCampaign = campaigns.find((c) => c.campaignId === campaignId);
-    if (!targetCampaign || targetCampaign.claimableXlm <= 0) {
-      showNotification({
-        type: "error",
-        title: "Claim Unavailable",
-        message: "No claimable commission found for this campaign.",
-      });
-      return;
-    }
-
     setClaimingId(campaignId);
     showNotification({
       type: "info",
       title: "Claiming Commission",
-      message: `Submitting Soroban claim_payout for ${targetCampaign.campaignName}...`,
+      message: `Submitting Soroban claim_payout for Campaign #${campaignId}...`,
     });
 
     try {
       const target = campaigns.find((c) => c.campaignId === campaignId);
       const res = await claimPayoutOnChain(campaignId, target?.assetCode);
-      if (!res.success) {
-        throw new Error("On-chain claim invocation failed.");
-      }
-      if (!res.confirmed) {
-        showNotification({
-          type: "error",
-          title: "Claim Not Confirmed",
-          message:
-            "Transaction was not confirmed on the Stellar ledger. Simulated and fallback results cannot be claimed.",
-        });
-        return;
-      }
       setCampaigns((prev) =>
         prev.map((c) => (c.campaignId === campaignId ? { ...c, status: "claimed" } : c)),
       );
-
-      const txHash = res.txHash || undefined;
-      const receiptUrl = txHash ? getStellarExplorerLink("tx", txHash) : undefined;
-
       if (shouldDeliverAffiliateNotification("payout")) {
         showNotification({
           type: "success",
           title: "Commission Paid Out!",
-          message: txHash
-            ? `Settled on Soroban Smart Contract. Tx: ${txHash.slice(0, 10)}... (Confirmed)`
-            : "Settled on Soroban Smart Contract. (Confirmed)",
-          confetti: true,
-          receiptUrl,
-          receipt: {
-            txHash,
-            amount: `${targetCampaign.claimableXlm.toFixed(2)} XLM`,
-            saleId: campaignId,
-            campaign: targetCampaign.campaignName,
-            date: new Date().toLocaleString(),
-            explorerUrl: receiptUrl,
-            confirmed: true,
-          },
+          message: `Settled on Stellar ledger. Tx: ${res.txHash ? res.txHash.slice(0, 10) + "..." : "Confirmed"}`,
         });
       }
-    } catch (err: unknown) {
+    } catch (err: any) {
       showNotification({
         type: "error",
         title: "Claim Failed",
-        message: err instanceof Error ? err.message : "Failed to claim commission.",
+        message: err.message || "Failed to claim commission.",
       });
     } finally {
       setClaimingId(null);
@@ -597,7 +525,7 @@ export const ClaimPayouts = () => {
               {/* Explorer Link & Close Button */}
               <div className="pt-2 flex items-center justify-between">
                 <a
-                  href={getStellarExplorerLink("tx", receipt.txHash)}
+                  href={`https://stellar.expert/explorer/testnet/tx/${receipt.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center"

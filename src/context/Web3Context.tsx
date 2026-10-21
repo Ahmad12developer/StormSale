@@ -89,7 +89,6 @@ export interface Web3ContextType {
     assetCode?: SupportedEscrowAssetCode,
   ) => Promise<{
     success: boolean;
-    confirmed?: boolean;
     txHash?: string;
     asset?: SupportedEscrowAssetCode;
   }>;
@@ -602,15 +601,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   };
 
   // Soroban: Claim Affiliate Commission
-  const claimPayoutOnChain = async (
-    campaignId: number,
-    assetCode?: SupportedEscrowAssetCode,
-  ): Promise<{
-    success: boolean;
-    confirmed: boolean;
-    txHash?: string;
-    asset?: SupportedEscrowAssetCode;
-  }> => {
+  const claimPayoutOnChain = async (campaignId: number, assetCode?: SupportedEscrowAssetCode) => {
     if (!userAddress) throw new Error("Wallet not connected");
     await assertNotSanctioned(userAddress, "claim-payout");
 
@@ -634,15 +625,11 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         });
       }
       setTimeout(() => refreshBalance(userAddress), 1000);
-      return {
-        ...res,
-        confirmed: Boolean(res.confirmed),
-      };
+      return res;
     } else {
       const mockTxHash = `tx_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 8)}`;
       return {
         success: true,
-        confirmed: false,
         txHash: mockTxHash,
         ...(assetCode ? { asset: assetCode } : {}),
       };

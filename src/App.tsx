@@ -1,11 +1,7 @@
 import React, { Suspense, useState, useEffect, useRef, lazy } from "react";
 import { Web3Provider } from "./context/Web3Context";
 import { WalletConnectProvider } from "./context/WalletConnectContext";
-import {
-  NotificationProvider,
-  NotificationWrapper,
-  useNotification,
-} from "./context/NotificationContext";
+import { NotificationProvider, NotificationWrapper } from "./context/NotificationContext";
 import { useWeb3 } from "./hooks/useWeb3";
 import { usePreference } from "./hooks/usePreference";
 import { ConnectWalletModal } from "./components/shared/ConnectWalletModal";
@@ -98,8 +94,7 @@ const VALID_PAGES = ["dashboard", "advertiser", "affiliate", "auditor"] as const
 type Page = (typeof VALID_PAGES)[number];
 
 function Router() {
-  const { isConnected, connectWallet } = useWeb3();
-  const { showNotification } = useNotification();
+  const { isConnected } = useWeb3();
   const [tmaMode, setTmaMode] = useState(() => isTelegramMiniApp());
 
   const [currentPage, setCurrentPage] = usePreference<Page>(
@@ -125,60 +120,11 @@ function Router() {
     return params.get("brand") || params.get("c") || null;
   });
 
-  const isMock =
-    typeof window !== "undefined" &&
-    Boolean(import.meta.env.DEV) &&
-    new URLSearchParams(window.location.search).get("mock") === "true";
-
-  const hasAutoConnectedMock = useRef(false);
-
-  useEffect(() => {
-    if (isMock && !isConnected && !hasAutoConnectedMock.current) {
-      hasAutoConnectedMock.current = true;
-      connectWallet("mock").catch((err) => {
-        console.error("Mock wallet connection failed:", err);
-        showNotification({
-          type: "error",
-          title: "Wallet Connection Failed",
-          message: err instanceof Error ? err.message : "Failed to connect mock wallet.",
-        });
-      });
-    }
-  }, [isMock, isConnected, connectWallet, showNotification]);
-
   const handleNavigate = (page: string) => {
     if (VALID_PAGES.includes(page as Page)) {
       setCurrentPage(page as Page);
-      if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        url.searchParams.set("page", page);
-        window.history.pushState({}, "", url.toString());
-      }
     }
   };
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const pageParam = params.get("page");
-      if (pageParam && VALID_PAGES.includes(pageParam as Page)) {
-        setCurrentPage(pageParam as Page);
-      }
-    }
-
-    const handlePopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      const pageParam = params.get("page");
-      if (pageParam && VALID_PAGES.includes(pageParam as Page)) {
-        setCurrentPage(pageParam as Page);
-      } else {
-        setCurrentPage("dashboard");
-      }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [setCurrentPage]);
 
   if (activeBrandSubdomain) {
     return (
@@ -201,7 +147,7 @@ function Router() {
       <MultiSigApprovalModal />
       <RpcStatusModal />
       <Suspense fallback={<PageLoader />}>
-        {!isConnected && !isMock && !tmaMode ? (
+        {!isConnected && !tmaMode ? (
           <Landing />
         ) : (
           <div className="min-h-screen bg-background">
@@ -218,14 +164,7 @@ function Router() {
                 <ProtectedRoute requiredRole="AFFILIATE" onNavigate={handleNavigate}>
                   <Suspense fallback={<div className="p-8 text-center">Loading Affiliate...</div>}>
                     <Affiliate
-                      onBack={() => {
-                        if (isConnected) {
-                          handleNavigate("dashboard");
-                        } else {
-                          setTmaMode(false);
-                          handleNavigate("dashboard");
-                        }
-                      }}
+                      onBack={() => (isConnected ? handleNavigate("dashboard") : setTmaMode(false))}
                     />
                   </Suspense>
                 </ProtectedRoute>

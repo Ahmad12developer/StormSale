@@ -654,7 +654,6 @@ export async function claimPayoutContractCall(
   assetCode?: SupportedEscrowAssetCode,
 ): Promise<{
   success: boolean;
-  confirmed: boolean;
   txHash: string;
   asset?: SupportedEscrowAssetCode;
   assetAddress?: string;
@@ -679,12 +678,12 @@ export async function claimPayoutContractCall(
       // Ignore simulation/query error on unmocked non-network calls
     }
   }
+
   if (walletType === "mock" || affiliateAddress.startsWith("GASTORMSALE7")) {
     const mockHash =
       "0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
     return {
       success: true,
-      confirmed: false,
       txHash: mockHash,
       ...(resolvedAssetCode && resolvedAssetAddress
         ? { asset: resolvedAssetCode, assetAddress: resolvedAssetAddress }
@@ -699,7 +698,6 @@ export async function claimPayoutContractCall(
   const result = await invokeSorobanMethod(affiliateAddress, "claim_payout", args, walletType);
   return {
     success: true,
-    confirmed: true,
     txHash: result.txHash,
     ...(resolvedAssetCode && resolvedAssetAddress
       ? { asset: resolvedAssetCode, assetAddress: resolvedAssetAddress }

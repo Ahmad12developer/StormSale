@@ -1,5 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
-import { TerminologyTooltip, TerminologyGuideButton } from "../../components/ui/tooltip";
+import { useCallback, useState } from "react";
 import QRCode from "qrcode";
 import {
   Card,
@@ -11,25 +10,18 @@ import {
 import { Button } from "../../components/ui/button";
 import {
   TrendingUp,
-  TrendingDown,
-  Minus,
   Users,
   DollarSign,
+  Target,
+  Zap,
   ArrowRight,
   CheckCircle2,
-  BarChart3,
   Copy,
   Download,
   Link2,
-  AlertCircle,
-  RotateCw,
-  type LucideIcon,
+  QrCode,
+  ShieldCheck,
 } from "lucide-react";
-import {
-  fetchAffiliateConversionData,
-  type ActiveLinkAnalytics,
-  type ConversionAnalyticsSummary,
-} from "../../utils/api";
 import { useWeb3 } from "../../context/Web3Context";
 
 const toBase64Url = (bytes: Uint8Array) => {
@@ -120,182 +112,148 @@ const AffiliateLinkGenerator = () => {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-6 pt-6">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label
-              htmlFor="affiliate-wallet-input"
-              className="block text-xs font-semibold uppercase tracking-wider text-zinc-500"
-            >
-              Affiliate wallet
-            </label>
-            <input
-              id="affiliate-wallet-input"
-              type="text"
-              value={affiliateAddress}
-              onChange={(e) => setAffiliateOverride(e.target.value)}
-              placeholder="e.g. G... on Stellar"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3.5 py-2.5 text-xs text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <p className="mt-1 text-[11px] text-zinc-400">
-              Defaults to your connected wallet if available.
-            </p>
-          </div>
-          <div>
-            <label
-              htmlFor="campaign-id-input"
-              className="block text-xs font-semibold uppercase tracking-wider text-zinc-500"
-            >
-              Campaign ID
-            </label>
-            <input
-              id="campaign-id-input"
-              type="text"
-              value={campaignId}
-              onChange={(e) => setCampaignId(e.target.value)}
-              placeholder="e.g. 1"
-              className="mt-1.5 w-full rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3.5 py-2.5 text-xs text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            onClick={generate}
-            disabled={isGenerating}
-            className="rounded-xl bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-500"
-          >
-            {isGenerating ? "Encrypting link..." : "Create link & QR code"}
-          </Button>
-          {message && <span className="text-xs text-zinc-500 dark:text-zinc-400">{message}</span>}
-        </div>
-
-        {shareUrl && (
-          <div className="rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-950/60 p-4 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
-                Your encrypted tracking link
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={copyLink}
-                className="gap-1.5 rounded-lg text-xs"
+      <CardContent className="p-5 md:p-6">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_240px]">
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="affiliate-wallet"
+                className="mb-1.5 block text-xs font-semibold text-zinc-600 dark:text-zinc-300"
               >
-                <Copy className="w-3.5 h-3.5" />
-                Copy link
-              </Button>
+                Affiliate wallet
+              </label>
+              <input
+                id="affiliate-wallet"
+                value={affiliateAddress}
+                onChange={(event) => setAffiliateOverride(event.target.value)}
+                placeholder="G... wallet address"
+                className="w-full h-11 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3.5 text-sm text-zinc-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
+              />
             </div>
-            <p className="break-all font-mono text-[11px] text-zinc-600 dark:text-zinc-400 bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-slate-200 dark:border-zinc-800">
-              {shareUrl}
-            </p>
-
-            {qrDataUrl && (
-              <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
-                <img
-                  src={qrDataUrl}
-                  alt="Campaign referral QR code"
-                  className="w-32 h-32 rounded-lg border border-slate-200 dark:border-zinc-800 bg-white p-2 shadow-xs"
-                />
-                <div className="space-y-1 text-center sm:text-left">
-                  <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200">
-                    Offline & print friendly
-                  </p>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 max-w-sm">
-                    Print or display this QR code anywhere. When scanned, attribution is recorded
-                    securely via the encrypted parameters.
-                  </p>
-                  <a
-                    href={qrDataUrl}
-                    download={`campaign-${campaignId || "referral"}-qr.png`}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-1"
+            <div>
+              <label
+                htmlFor="campaign-id"
+                className="mb-1.5 block text-xs font-semibold text-zinc-600 dark:text-zinc-300"
+              >
+                Campaign ID
+              </label>
+              <input
+                id="campaign-id"
+                value={campaignId}
+                onChange={(event) => setCampaignId(event.target.value)}
+                placeholder="e.g. spring-launch"
+                className="w-full h-11 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3.5 text-sm text-zinc-900 dark:text-white outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
+              />
+            </div>
+            <Button
+              onClick={generate}
+              disabled={isGenerating}
+              className="h-11 w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold"
+            >
+              <QrCode className="mr-2 h-4 w-4" />
+              {isGenerating
+                ? "Generating secure link…"
+                : shareUrl
+                  ? "Generate a new link"
+                  : "Generate link & QR code"}
+            </Button>
+            {message && (
+              <p
+                role="status"
+                aria-live="polite"
+                className="text-xs text-zinc-500 dark:text-zinc-400"
+              >
+                {message}
+              </p>
+            )}
+            {shareUrl && (
+              <div className="space-y-2">
+                <label
+                  htmlFor="share-link"
+                  className="block text-xs font-semibold text-zinc-600 dark:text-zinc-300"
+                >
+                  Your share link
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="share-link"
+                    readOnly
+                    value={shareUrl}
+                    className="min-w-0 flex-1 h-10 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 px-3 text-xs text-zinc-600 dark:text-zinc-300"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={copyLink}
+                    aria-label="Copy affiliate link"
+                    className="h-10 rounded-lg px-3"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    Download PNG
-                  </a>
+                    <Copy className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             )}
+            <div className="flex gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 p-3 text-xs leading-relaxed text-emerald-800 dark:text-emerald-300">
+              <ShieldCheck className="h-4 w-4 shrink-0" />
+              <span>
+                AES-256-GCM encrypts your affiliate and campaign details. The key stays in the URL
+                fragment and is not sent with the request.
+              </span>
+            </div>
           </div>
-        )}
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 dark:border-zinc-700 bg-slate-50/70 dark:bg-zinc-950/40 p-5 text-center">
+            {qrDataUrl ? (
+              <>
+                <img
+                  src={qrDataUrl}
+                  alt="QR code for encrypted affiliate tracking link"
+                  className="h-[180px] w-[180px] rounded-xl bg-white p-2 shadow-sm"
+                />
+                <p className="mt-3 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                  Scan to open your affiliate link
+                </p>
+                <a
+                  href={qrDataUrl}
+                  download="stormsale-affiliate-qr.png"
+                  className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 text-xs font-semibold text-zinc-700 dark:text-zinc-200 hover:border-indigo-400"
+                >
+                  <Download className="h-3.5 w-3.5" /> Download QR
+                </a>
+              </>
+            ) : (
+              <>
+                <div className="flex h-[180px] w-[180px] items-center justify-center rounded-xl bg-white dark:bg-zinc-900 text-slate-300 dark:text-zinc-700">
+                  <QrCode className="h-16 w-16" strokeWidth={1.25} />
+                </div>
+                <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                  Your QR code appears here
+                </p>
+              </>
+            )}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
 };
 
-interface AffiliateOverviewProps {
-  onNavigateTab?: (tab: string) => void;
-}
+import { TerminologyTooltip, TerminologyGuideButton } from "../../components/ui/tooltip";
 
-export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigateTab }) => {
-  const { userAddress } = useWeb3();
-  const [conversionData, setConversionData] = useState<{
-    links: ActiveLinkAnalytics[];
-    summary: ConversionAnalyticsSummary;
-  } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-
-  const loadConversionData = useCallback(() => {
-    setIsLoading(true);
-    setFetchError(null);
-    fetchAffiliateConversionData(undefined, userAddress || undefined)
-      .then((data) => {
-        setConversionData(data);
-      })
-      .catch((err) => {
-        console.error("Failed to load conversion data:", err);
-        setFetchError("Unable to load real-time conversion metrics.");
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  }, [userAddress]);
-
-  useEffect(() => {
-    loadConversionData();
-  }, [loadConversionData]);
-
-  const overallCVR = conversionData?.summary.overallCVR ?? 0;
-  const cvrTrendDelta = conversionData?.summary.cvrTrendDelta ?? 0;
-  const cvrTrendDirection = conversionData?.summary.cvrTrendDirection ?? "neutral";
-
-  const stats: Array<{
-    title: string;
-    value: string;
-    change?: string;
-    trend?: "up" | "down" | "neutral";
-    icon: LucideIcon;
-  }> = [
+export const AffiliateOverview = () => {
+  const stats = [
     {
       title: "Total Earnings",
-      value: isLoading
-        ? "Loading..."
-        : conversionData
-          ? `${conversionData.summary.totalEarnedXlm.toLocaleString()} XLM`
-          : "0 XLM",
+      value: "$12,847",
+      change: "+18% this month",
       icon: DollarSign,
     },
+    { title: "Active Campaigns", value: "8", change: "+2 this week", icon: Users },
     {
-      title: "Active Campaigns",
-      value: isLoading
-        ? "..."
-        : conversionData
-          ? `${conversionData.summary.activeLinksCount}`
-          : "0",
-      icon: Users,
-    },
-    {
-      title: "Conversion Rate (CVR)",
-      value: isLoading ? "..." : `${overallCVR.toFixed(2)}%`,
-      change: isLoading
-        ? "Loading..."
-        : `${cvrTrendDelta >= 0 ? "+" : ""}${cvrTrendDelta.toFixed(2)}% vs benchmark`,
-      trend: cvrTrendDirection,
+      title: "Conversion Rate",
+      value: "3.2%",
+      change: "+0.4% vs last month",
       icon: TrendingUp,
     },
+    { title: "Monthly Goal", value: "85%", change: "On track", icon: Target },
   ];
 
   const recentPayouts = [
@@ -320,7 +278,7 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
   ];
 
   return (
-    <div className="space-y-8 font-sans">
+    <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-white dark:bg-zinc-900/50 p-6 md:p-8 rounded-3xl border border-slate-200 dark:border-zinc-800 shadow-sm">
         <div>
@@ -328,170 +286,51 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
             Affiliate Dashboard
           </h1>
           <p className="text-zinc-500 dark:text-zinc-400 mt-2 font-medium">
-            Track your performance, real-time conversion rates, and maximize your{" "}
+            Track your performance and maximize your{" "}
             <TerminologyTooltip term="soroban">on-chain earnings</TerminologyTooltip>.
           </p>
         </div>
-        <div className="mt-6 lg:mt-0 flex flex-wrap items-center gap-3">
+        <div className="mt-6 lg:mt-0 flex items-center gap-3">
           <TerminologyGuideButton className="h-12 px-5 rounded-full" />
-          <Button
-            onClick={() => onNavigateTab?.("performance")}
-            className="bg-zinc-900 hover:bg-zinc-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white rounded-full px-6 h-12 font-semibold shadow-md transition-all gap-2"
-          >
-            <BarChart3 className="w-5 h-5" />
-            View CVR Analytics
+          <Button className="bg-zinc-900 hover:bg-zinc-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white rounded-full px-6 h-12 font-semibold shadow-md transition-all">
+            <Zap className="w-5 h-5 mr-2" />
+            Quick Start Guide
           </Button>
         </div>
       </div>
 
       {/* Stats Grid */}
-      {fetchError ? (
-        <div className="p-6 rounded-2xl bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 text-rose-700 dark:text-rose-400">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            <span className="text-sm font-medium">{fetchError}</span>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={loadConversionData}
-            className="rounded-xl text-xs font-bold gap-1.5"
-          >
-            <RotateCw className="w-3.5 h-3.5" />
-            Retry
-          </Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {stats.map((stat, index) => {
-            const IconComponent = stat.icon;
-            return (
-              <Card
-                key={index}
-                className="border border-slate-200 dark:border-zinc-800 shadow-sm rounded-3xl bg-white dark:bg-zinc-900/50 hover:shadow-md transition-shadow"
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                        {stat.title}
-                      </p>
-                      <h3 className="text-2xl font-black text-zinc-900 dark:text-white mt-2">
-                        {stat.value}
-                      </h3>
-                      {stat.change && (
-                        <div className="flex items-center mt-2 space-x-1">
-                          {stat.trend === "up" && <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />}
-                          {stat.trend === "down" && (
-                            <TrendingDown className="w-3.5 h-3.5 text-rose-500" />
-                          )}
-                          {stat.trend === "neutral" && <Minus className="w-3.5 h-3.5 text-zinc-400" />}
-                          <span
-                            className={`text-xs font-bold ${
-                              stat.trend === "up"
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : stat.trend === "down"
-                                  ? "text-rose-600 dark:text-rose-400"
-                                  : "text-zinc-500"
-                            }`}
-                          >
-                            {stat.change}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="w-12 h-12 bg-slate-100 dark:bg-zinc-800/80 rounded-2xl flex items-center justify-center">
-                      <IconComponent className="w-5 h-5 text-zinc-900 dark:text-indigo-400" />
-                    </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {stats.map((stat, index) => {
+          const IconComponent = stat.icon;
+          return (
+            <Card
+              key={index}
+              className="bg-white dark:bg-zinc-900/80 shadow-sm border border-slate-200 dark:border-zinc-800 hover:shadow-md transition-shadow rounded-2xl"
+            >
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+                      {stat.title}
+                    </p>
+                    <p className="text-2xl font-extrabold text-zinc-900 dark:text-white mt-2 mb-1">
+                      {stat.value}
+                    </p>
+                    <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                      {stat.change}
+                    </p>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Real-Time Active Links CVR Snapshot */}
-      {conversionData && (
-        <Card className="border border-slate-200 dark:border-zinc-800 shadow-sm rounded-3xl bg-white dark:bg-zinc-900/50">
-          <CardHeader className="border-b border-slate-100 dark:border-zinc-800/50 pb-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <div>
-                <CardTitle className="text-lg font-bold text-zinc-900 dark:text-white">
-                  Active Referral Links & Click-to-Sale Ratios (CVR)
-                </CardTitle>
-                <CardDescription className="text-zinc-500 dark:text-zinc-400 text-xs">
-                  Live synced with backend conversion data
-                </CardDescription>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onNavigateTab?.("performance")}
-                className="text-indigo-600 dark:text-indigo-400 text-xs font-bold gap-1 p-0 hover:bg-transparent"
-              >
-                <span>Full Analytics</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {conversionData.links.map((link) => (
-                <div
-                  key={link.id}
-                  className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-950/50 border border-slate-100 dark:border-zinc-800/60 space-y-2 hover:border-indigo-200 dark:hover:border-indigo-500/30 transition-all"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="font-bold text-xs text-zinc-900 dark:text-white truncate max-w-[140px]">
-                      {link.campaignName}
-                    </div>
-                    <span
-                      className={`inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                        link.trendDirection === "up"
-                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
-                          : link.trendDirection === "down"
-                            ? "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400"
-                            : "bg-slate-200 text-slate-700 dark:bg-zinc-800 dark:text-zinc-400"
-                      }`}
-                    >
-                      {link.trendDirection === "up" && <TrendingUp className="w-2.5 h-2.5" />}
-                      {link.trendDirection === "down" && <TrendingDown className="w-2.5 h-2.5" />}
-                      {link.trendDirection === "neutral" && <Minus className="w-2.5 h-2.5" />}
-                      {link.trendDelta >= 0 ? `+${link.trendDelta}%` : `${link.trendDelta}%`}
-                    </span>
-                  </div>
-
-                  <div className="flex items-baseline justify-between pt-1">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-zinc-400">CVR</span>
-                      <p className="text-xl font-mono font-black text-indigo-600 dark:text-indigo-400">
-                        {link.conversionRate.toFixed(2)}%
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] text-zinc-400">Sales/Clicks</span>
-                      <p className="text-xs font-mono font-bold text-zinc-700 dark:text-zinc-300">
-                        {link.conversions} / {link.clicks}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-zinc-800 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-indigo-600 dark:bg-indigo-500"
-                      style={{ width: `${Math.min(100, (link.conversionRate / 8) * 100)}%` }}
-                    />
+                  <div className="w-10 h-10 bg-slate-100 dark:bg-zinc-800 rounded-xl flex items-center justify-center border border-slate-200 dark:border-zinc-700 shrink-0">
+                    <IconComponent className="w-5 h-5 text-zinc-900 dark:text-indigo-400" />
                   </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
 
-      {/* Encrypted link and QR generator */}
       <AffiliateLinkGenerator />
 
       {/* Two Column Layout */}
@@ -542,10 +381,9 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
             </div>
             <Button
               variant="ghost"
-              onClick={() => onNavigateTab?.("claim-payouts")}
               className="w-full mt-6 text-indigo-600 dark:text-indigo-400 font-semibold hover:bg-slate-50 dark:hover:bg-zinc-900/50"
             >
-              <span>View All Payouts</span>
+              View All Payouts
               <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </CardContent>
@@ -565,16 +403,13 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
             <div className="space-y-4">
               {[
                 {
-                  tip: "Optimize your content for higher conversions (target > 5% CVR)",
+                  tip: "Optimize your content for higher conversions",
                   impact: "High",
                 },
-                { tip: "Join trending campaigns early to capture early volume", impact: "Medium" },
+                { tip: "Join trending campaigns early", impact: "Medium" },
+                { tip: "Use multiple promotion channels", impact: "High" },
                 {
-                  tip: "Use multiple promotion channels with tailored referral links",
-                  impact: "High",
-                },
-                {
-                  tip: "Engage with your audience regularly on social media",
+                  tip: "Engage with your audience regularly",
                   impact: "Medium",
                 },
               ].map((item, index) => (
@@ -618,19 +453,16 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
                 label: "Join New Campaign",
                 description: "Discover high-paying campaigns",
                 icon: Users,
-                tab: "join-campaign",
               },
               {
                 label: "Track Performance",
-                description: "View CVR analytics and insights",
+                description: "View analytics and insights",
                 icon: TrendingUp,
-                tab: "performance",
               },
               {
                 label: "Withdraw Earnings",
                 description: "Claim your commissions",
                 icon: DollarSign,
-                tab: "claim-payouts",
               },
             ].map((action, index) => {
               const IconComponent = action.icon;
@@ -638,7 +470,6 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
                 <Button
                   key={index}
                   variant="outline"
-                  onClick={() => onNavigateTab?.(action.tab)}
                   className="h-24 flex-col gap-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 transition-all group"
                 >
                   <IconComponent className="w-6 h-6 text-zinc-400 dark:text-zinc-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" />

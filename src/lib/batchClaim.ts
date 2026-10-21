@@ -99,7 +99,6 @@ export interface BatchClaimReceipt {
   splitAllocations?: SplitAllocationReceipt[];
   /** Count of extra payment operations appended to the claim transaction. */
   paymentOperationCount?: number;
-  confirmed?: boolean;
 }
 
 /**
@@ -202,7 +201,6 @@ export async function executeBatchCommissionClaim(
 
     return {
       success: true,
-      confirmed: false,
       txHash: mockHash,
       totalClaimedXlm,
       timestamp: Date.now(),
@@ -272,7 +270,6 @@ export async function executeBatchCommissionClaim(
   }
   return {
     success: true,
-    confirmed: true,
     txHash,
     totalClaimedXlm,
     timestamp: Date.now(),

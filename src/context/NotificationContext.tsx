@@ -280,13 +280,13 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   );
 };
 
-interface ToastItemProps {
+export interface ToastItemProps {
   notification: Notification;
   onDismiss: (id: string) => void;
   onReceiptClick?: (notification: Notification) => void;
 }
 
-const ToastItem: React.FC<ToastItemProps> = ({ notification, onDismiss, onReceiptClick }) => {
+export const ToastItem: React.FC<ToastItemProps> = ({ notification, onDismiss, onReceiptClick }) => {
   const isAutoDismiss = !notification.persistent && (notification.duration ?? 0) > 0;
   const duration = notification.duration ?? 5000;
 
@@ -547,7 +547,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ notification, onDismiss, onReceip
   );
 };
 
-const NotificationContainer: React.FC = () => {
+export const NotificationContainer: React.FC = () => {
   const { notifications, dismissNotification, openReceiptModal } = useNotification();
 
   if (notifications.length === 0) return null;
@@ -581,7 +581,7 @@ const NotificationContainer: React.FC = () => {
   );
 };
 
-const ReceiptModal: React.FC<{
+export const ReceiptModal: React.FC<{
   receipt: NotificationReceipt | null;
   isOpen: boolean;
   onClose: () => void;

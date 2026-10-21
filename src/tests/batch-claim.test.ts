@@ -68,7 +68,6 @@ describe("Automated Batch Commission Claim Dispatcher (#158)", () => {
       );
 
       expect(receipt.success).toBe(true);
-      expect(receipt.confirmed).toBe(false);
       expect(receipt.txHash).toBeDefined();
       expect(receipt.txHash.startsWith("0x")).toBe(true);
       expect(receipt.totalClaimedXlm).toBe(155.75);
