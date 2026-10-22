@@ -20,6 +20,7 @@ import {
 } from "../../lib/crypto";
 import { logSaleSchema, getFieldErrors } from "../../lib/validation";
 import { dispatchWebhookEvent, triggerConversionPostback } from "../../lib/webhookEngine";
+import { getAffiliateAccess } from "../../lib/campaignAccess";
 import { Shield, Zap, Users, FileKey } from "lucide-react";
 
 export const LogSaleForm = () => {
@@ -63,6 +64,23 @@ export const LogSaleForm = () => {
     }
 
     const { data } = result;
+
+    // Private campaigns only credit approved affiliates. Checked before any
+    // encryption work so the advertiser sees why; `logSaleOnChain` enforces
+    // the same rule again for every caller. The id is already validated as a
+    // u32 by the schema, so this cannot throw on an out-of-range value.
+    if (/^\d+$/.test(data.campaignAddress)) {
+      const access = getAffiliateAccess(data.campaignAddress, data.affiliateAddress);
+      if (!access.allowed) {
+        showNotification({
+          type: "error",
+          title: "Affiliate Not Approved",
+          message: access.reason,
+        });
+        return;
+      }
+    }
+
     setIsLoading(true);
 
     try {
@@ -238,7 +256,7 @@ export const LogSaleForm = () => {
                     setCampaignAddress(e.target.value);
                     clearError("campaignAddress");
                   }}
-                  placeholder="CCAMPAIGN... (56-char Soroban Contract Address)"
+                  placeholder="Campaign ID (e.g. 1) or CCAMPAIGN... contract address"
                   variant={errors.campaignAddress ? "error" : "default"}
                   className="h-12 border-slate-200 dark:border-zinc-800 focus:ring-indigo-600 dark:focus:ring-indigo-500 rounded-xl bg-slate-50 dark:bg-zinc-950 font-mono"
                 />

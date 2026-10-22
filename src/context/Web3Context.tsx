@@ -34,6 +34,7 @@ import {
   type RpcEndpointStatus,
   type RpcFailoverEvent,
 } from "../lib/rpcFallback";
+import { assertAffiliateAllowed } from "../lib/campaignAccess";
 
 export interface Web3ContextType {
   userAddress: string | null;
@@ -578,6 +579,10 @@ export function Web3Provider({ children }: { children: ReactNode }) {
   ) => {
     if (!userAddress) throw new Error("Wallet not connected");
 
+    // Private campaigns: only approved affiliates may be credited. Checked
+    // here, the single path every sale takes, so no form can skip it.
+    assertAffiliateAllowed(campaignId, affiliateAddress);
+
     console.log(
       `[Soroban] Logging sale for Campaign #${campaignId}: Affiliate=${affiliateAddress}, Amount=${amountXlm} XLM`,
     );
@@ -704,7 +709,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
     },
   };
 
-  const getCampaignContract = (_address: string) => ({
+  const getCampaignContract = (address: string) => ({
     logEncryptedSale: async (
       affiliate: string,
       amount: string,
@@ -712,7 +717,12 @@ export function Web3Provider({ children }: { children: ReactNode }) {
       _advKey: any,
       _affKey: any,
     ) => {
-      const res = await logSaleOnChain(1, affiliate, parseFloat(amount) || 0);
+      // The campaign the advertiser entered, not a hard-coded #1: a sale must
+      // be logged (and access-checked) against the campaign it belongs to.
+      // Legacy non-numeric identifiers keep the old default.
+      const trimmed = address.trim();
+      const campaignId = /^\d+$/.test(trimmed) ? Number(trimmed) : 1;
+      const res = await logSaleOnChain(campaignId, affiliate, parseFloat(amount) || 0);
       return {
         wait: async () => res,
       };
