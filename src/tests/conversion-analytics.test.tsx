@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import React from "react";
-import { render, screen, fireEvent, act, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import {
   calculateCVR,
   calculateTrend,
@@ -78,14 +77,10 @@ vi.mock("../components/affiliate/AffiliateSettings", () => ({
   AffiliateSettings: () => <div data-testid="settings">Affiliate Settings</div>,
 }));
 vi.mock("../components/affiliate/AffiliateOverview", () => ({
-  AffiliateOverview: ({ onNavigateTab }: any) => (
-    <div data-testid="overview">
-      <button onClick={() => onNavigateTab("performance")}>Go Performance</button>
-    </div>
-  ),
+  AffiliateOverview: () => <div data-testid="overview">Overview Content</div>,
 }));
 vi.mock("../components/shared/Sidebar", () => ({
-  Sidebar: ({ tabs, activeTab, onTabChange, onBack }: any) => (
+  Sidebar: ({ tabs, onTabChange, onBack }: any) => (
     <aside data-testid="sidebar">
       <button onClick={onBack}>Back Button</button>
       {tabs.map((t: any) => (
@@ -640,10 +635,10 @@ describe("Affiliate Real-Time CVR & Conversion Analytics Suite (#52)", () => {
       expect(screen.getByText("Affiliate Pro Portal")).toBeDefined();
       expect(screen.getByTestId("overview")).toBeDefined();
 
-      // Switch to performance tab via Overview button
-      const goPerfBtn = screen.getByText("Go Performance");
+      // Switch to performance tab via sidebar
+      const cvrBtn = screen.getByRole("button", { name: "CVR Analytics" });
       act(() => {
-        fireEvent.click(goPerfBtn);
+        fireEvent.click(cvrBtn);
       });
 
       // Click preferences button

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import React, { useEffect } from "react";
-import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 
 vi.mock("../components/ui/dialog", () => ({
