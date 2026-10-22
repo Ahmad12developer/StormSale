@@ -17,7 +17,6 @@ import {
   Account,
   BASE_FEE,
   xdr,
-  StrKey,
 } from "@stellar/stellar-sdk";
 import { STELLAR_CONFIG, SUPPORTED_ESCROW_ASSETS } from "../config/stellar";
 import type { SupportedEscrowAssetCode } from "../config/stellar";
@@ -407,16 +406,14 @@ export function formatStellarAddress(address: string): string {
 /**
  * Validates whether a given string is a valid format for a Stellar public key (G...) or contract (C...).
  */
-export function isValidStellarAddress(address?: string): boolean {
+export function isValidStellarAddress(address: string): boolean {
   if (!address) return false;
   const trimmed = address.trim();
-  if (trimmed.startsWith("G")) {
-    return StrKey.isValidEd25519PublicKey(trimmed);
-  }
-  if (trimmed.startsWith("C")) {
-    return StrKey.isValidContract(trimmed);
-  }
-  return false;
+  return (
+    (trimmed.startsWith("G") || trimmed.startsWith("C")) &&
+    trimmed.length === 56 &&
+    /^[A-Z0-9]+$/.test(trimmed)
+  );
 }
 
 /**

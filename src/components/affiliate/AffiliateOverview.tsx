@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
-import { TerminologyTooltip, TerminologyGuideButton } from "../../components/ui/tooltip";
+import { useCallback, useState } from "react";
 import QRCode from "qrcode";
 import {
   Card,
@@ -17,17 +16,12 @@ import {
   Zap,
   ArrowRight,
   CheckCircle2,
-  AlertTriangle,
-  Clock,
-  Search,
   Copy,
   Download,
   Link2,
   QrCode,
   ShieldCheck,
 } from "lucide-react";
-import { IssueDisputeManager } from "./IssueDisputeManager";
-import { fetchDisputes, type DisputeReport } from "../../utils/disputes";
 import { useWeb3 } from "../../context/Web3Context";
 
 const toBase64Url = (bytes: Uint8Array) => {
@@ -242,33 +236,9 @@ const AffiliateLinkGenerator = () => {
   );
 };
 
-export interface AffiliateOverviewProps {
-  onNavigateTab?: (tab: string) => void;
-}
+import { TerminologyTooltip, TerminologyGuideButton } from "../../components/ui/tooltip";
 
-export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigateTab }) => {
-  const [isDisputeOpen, setIsDisputeOpen] = useState(false);
-  const [disputeInitialTab, setDisputeInitialTab] = useState<"form" | "tracker">("form");
-  const [disputeReports, setDisputeReports] = useState<DisputeReport[]>([]);
-
-  useEffect(() => {
-    fetchDisputes().then(setDisputeReports);
-  }, []);
-
-  const openDisputeModal = (tab: "form" | "tracker") => {
-    setDisputeInitialTab(tab);
-    setIsDisputeOpen(true);
-  };
-
-  const navigateToTab = (tab: string) => {
-    if (onNavigateTab) {
-      onNavigateTab(tab);
-    } else if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("tab", tab);
-      window.location.assign(url.toString());
-    }
-  };
+export const AffiliateOverview = () => {
   const stats = [
     {
       title: "Total Earnings",
@@ -466,86 +436,6 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
         </Card>
       </div>
 
-      {/* Issue Reporting & Dispute Resolution Card (#55) */}
-      <Card className="border border-amber-200/60 dark:border-amber-500/20 shadow-sm rounded-3xl bg-gradient-to-br from-amber-50/50 via-white to-orange-50/30 dark:from-zinc-900/90 dark:via-zinc-900/60 dark:to-amber-950/20 overflow-hidden">
-        <CardContent className="p-6 md:p-8">
-          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-            <div className="flex items-start space-x-4">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-rose-600 flex items-center justify-center text-white shadow-lg shrink-0">
-                <AlertTriangle className="w-7 h-7" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2.5">
-                  <h3 className="text-xl font-extrabold text-zinc-900 dark:text-white tracking-tight">
-                    Issue Reporting & Dispute Protocol
-                  </h3>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
-                    Demo Protocol
-                  </span>
-                </div>
-                <p className="text-zinc-600 dark:text-zinc-400 text-xs sm:text-sm mt-1.5 max-w-2xl leading-relaxed">
-                  Notice missing conversions, delayed clearing, or uncredited referral commissions?
-                  Submit standardized dispute reports with screenshot attachments for local
-                  demonstration and transparent multi-stage status tracking.
-                </p>
-
-                <div className="flex flex-wrap items-center gap-4 mt-4 text-xs font-semibold">
-                  <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                    <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                    <span>
-                      In Review:{" "}
-                      <strong>
-                        {
-                          disputeReports.filter(
-                            (d) =>
-                              d.status === "submitted" ||
-                              d.status === "under_review" ||
-                              d.status === "investigating",
-                          ).length
-                        }{" "}
-                        active
-                      </strong>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-300">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>
-                      Resolved:{" "}
-                      <strong>
-                        {
-                          disputeReports.filter(
-                            (d) => d.status === "approved" || d.status === "rejected",
-                          ).length
-                        }{" "}
-                        settled
-                      </strong>
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto shrink-0">
-              <Button
-                onClick={() => openDisputeModal("form")}
-                className="bg-zinc-900 hover:bg-zinc-800 dark:bg-amber-500 dark:hover:bg-amber-400 dark:text-zinc-950 text-white rounded-xl h-11 px-5 text-xs font-bold shadow-md transition-all flex items-center justify-center gap-2"
-              >
-                <AlertTriangle className="w-4 h-4" />
-                Report Missing Sale
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => openDisputeModal("tracker")}
-                className="border-slate-200 dark:border-zinc-800 hover:bg-white dark:hover:bg-zinc-800 rounded-xl h-11 px-5 text-xs font-bold text-zinc-800 dark:text-zinc-200 transition-all flex items-center justify-center gap-2"
-              >
-                <Search className="w-4 h-4 text-zinc-500" />
-                Track Disputes ({disputeReports.length})
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Quick Actions */}
       <Card className="border border-slate-200 dark:border-zinc-800 shadow-sm rounded-2xl bg-white dark:bg-zinc-900/50">
         <CardHeader className="border-b border-slate-100 dark:border-zinc-800/50 pb-4">
@@ -557,31 +447,22 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
               {
                 label: "Join New Campaign",
                 description: "Discover high-paying campaigns",
                 icon: Users,
-                onClick: () => navigateToTab("join-campaign"),
               },
               {
                 label: "Track Performance",
-                description: "Performance metrics coming soon",
+                description: "View analytics and insights",
                 icon: TrendingUp,
-                disabled: true,
               },
               {
                 label: "Withdraw Earnings",
                 description: "Claim your commissions",
                 icon: DollarSign,
-                onClick: () => navigateToTab("claim-payouts"),
-              },
-              {
-                label: "Report Missing Sale",
-                description: "File proof & track dispute",
-                icon: AlertTriangle,
-                onClick: () => openDisputeModal("form"),
               },
             ].map((action, index) => {
               const IconComponent = action.icon;
@@ -589,9 +470,7 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
                 <Button
                   key={index}
                   variant="outline"
-                  disabled={action.disabled}
-                  onClick={action.onClick}
-                  className="h-24 flex-col gap-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-24 flex-col gap-3 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-slate-50 dark:hover:bg-zinc-800 hover:border-slate-300 dark:hover:border-zinc-700 transition-all group"
                 >
                   <IconComponent className="w-6 h-6 text-zinc-400 dark:text-zinc-500 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors" />
                   <div className="text-center">
@@ -608,16 +487,6 @@ export const AffiliateOverview: React.FC<AffiliateOverviewProps> = ({ onNavigate
           </div>
         </CardContent>
       </Card>
-
-      {/* Issue Dispute Manager Dialog Modal (#55) */}
-      <IssueDisputeManager
-        isOpen={isDisputeOpen}
-        onClose={() => setIsDisputeOpen(false)}
-        initialTab={disputeInitialTab}
-        onReportSubmitted={() => {
-          fetchDisputes().then(setDisputeReports);
-        }}
-      />
     </div>
   );
 };
