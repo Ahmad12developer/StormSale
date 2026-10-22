@@ -2,14 +2,15 @@
  * Private campaigns and affiliate applications.
  *
  * A campaign is either **public** (anyone may promote it — the existing
- * behaviour, and the default for every campaign that has no policy) or
- * **private** ("application required"). For a private campaign an affiliate
+ * behaviour) or **private** ("application required"). A campaign this browser
+ * holds no policy for is reported as visibility "unknown" and still allowed
+ * (see {@link getAffiliateAccess}). For a private campaign an affiliate
  * must apply with the channels they will promote on, and the advertiser must
  * approve them before they can:
  *
  *   1. generate a tracking link for the campaign ({@link buildTrackingLink}), or
- *   2. have a sale logged against them ({@link assertAffiliateAllowed}, which
- *      `logSaleOnChain` runs before every sale it submits).
+ *   2. have a sale logged against them through the Log Sale form, which checks
+ *      {@link getAffiliateAccess} before any encryption or submission work.
  *
  * ## Where the whitelist lives
  *
@@ -141,6 +142,9 @@ function write<T>(key: string, rows: T[]): void {
   try {
     getLocalStorage().setItem(key, JSON.stringify(rows));
   } catch (err) {
+    // Quota exceeded, storage disabled, private mode: nothing was saved, so
+    // no change event is sent either.
+    console.warn(`[campaignAccess] could not save ${key}:`, err);
     throw new CampaignAccessStorageError(err);
   }
   if (typeof window !== "undefined") {

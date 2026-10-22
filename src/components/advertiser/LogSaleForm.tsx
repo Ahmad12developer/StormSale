@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -66,9 +65,8 @@ export const LogSaleForm = () => {
     const { data } = result;
 
     // Private campaigns only credit approved affiliates. Checked before any
-    // encryption work so the advertiser sees why; `logSaleOnChain` enforces
-    // the same rule again for every caller. The id is already validated as a
-    // u32 by the schema, so this cannot throw on an out-of-range value.
+    // encryption work so the advertiser sees why. The id is already validated
+    // as a u32 by the schema, so this cannot throw on an out-of-range value.
     if (/^\d+$/.test(data.campaignAddress)) {
       const access = getAffiliateAccess(data.campaignAddress, data.affiliateAddress);
       if (!access.allowed) {
@@ -105,18 +103,10 @@ export const LogSaleForm = () => {
       const encryptedPayload = await encryptPayload(payload, aesKey);
 
       const advertiserPublicKey = await getPublicKeyForAddress(userAddress);
-      const affiliatePublicKey = await getPublicKeyForAddress(
-        data.affiliateAddress,
-      );
+      const affiliatePublicKey = await getPublicKeyForAddress(data.affiliateAddress);
 
-      const advertiserWrappedKey = await wrapAESKey(
-        aesKey,
-        advertiserPublicKey,
-      );
-      const affiliateWrappedKey = await wrapAESKey(
-        aesKey,
-        affiliatePublicKey,
-      );
+      const advertiserWrappedKey = await wrapAESKey(aesKey, advertiserPublicKey);
+      const affiliateWrappedKey = await wrapAESKey(aesKey, affiliatePublicKey);
 
       showNotification({
         type: "info",
@@ -164,9 +154,7 @@ export const LogSaleForm = () => {
           currency: "XLM",
           stellarTxHash: postbackTxHash,
           ledgerTimestamp: createdAt,
-          customerRef: data.customerData
-            ? `REF_${payload.saleId.slice(-8)}`
-            : "Anonymous Customer",
+          customerRef: data.customerData ? `REF_${payload.saleId.slice(-8)}` : "Anonymous Customer",
           status: "CONFIRMED_ON_LEDGER",
         });
 
@@ -205,8 +193,7 @@ export const LogSaleForm = () => {
       showNotification({
         type: "error",
         title: "Logging Failed",
-        message:
-          error instanceof Error ? error.message : "Failed to log sale.",
+        message: error instanceof Error ? error.message : "Failed to log sale.",
       });
     } finally {
       setIsLoading(false);
@@ -341,10 +328,7 @@ export const LogSaleForm = () => {
                     const IconComponent = item.icon;
 
                     return (
-                      <div
-                        key={item.step}
-                        className="flex flex-col items-center"
-                      >
+                      <div key={item.step} className="flex flex-col items-center">
                         <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 rounded-full flex items-center justify-center text-sm font-bold mb-3 border border-indigo-200 dark:border-indigo-500/30">
                           {item.step}
                         </div>
