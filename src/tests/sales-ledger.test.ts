@@ -120,7 +120,7 @@ describe("Auditable Payout & History Ledger Suite (#51)", () => {
     expect(isValidStellarAddress("CA7QW5KXGPTR4N2K9J2M7V4...")).toBe(false);
     expect(isValidStellarAddress("GBBD5678WXYZ...")).toBe(false);
     expect(isValidStellarAddress("")).toBe(false);
-    expect(isValidStellarAddress(undefined)).toBe(false);
+    expect(isValidStellarAddress(undefined as unknown as string)).toBe(false);
     expect(isValidStellarAddress("not-an-address")).toBe(false);
 
     // Valid tx hash (64 hex characters)

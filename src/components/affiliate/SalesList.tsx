@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useContext, useRef } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { Button } from "../../components/ui/button";
 import {
   Card,
@@ -34,7 +34,7 @@ import { isValidStellarAddress } from "../../lib/stellar";
 import { getStellarExplorerLink, verifyHorizonConnectivity } from "../../utils/network";
 import { STELLAR_CONFIG } from "../../config/stellar";
 import { CONTRACT_ADDRESSES } from "../../config/contracts";
-import { Web3Context } from "../../context/Web3Context";
+import { useWeb3 } from "../../hooks/useWeb3";
 import {
   Shield,
   Lock,
@@ -85,6 +85,7 @@ export const getSaleStatus = (sale: SaleRecord): "claimed" | "pending" | "proces
 
 export interface SalesListProps {
   sales?: Sale[];
+  userAddress?: string | null;
 }
 
 export const DEFAULT_CLEARING_PERIOD = 604800; // 7 days in seconds
@@ -321,9 +322,18 @@ export const formatTimestamp = (timestamp: number) => {
   });
 };
 
-export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => {
-  const web3 = useContext(Web3Context);
-  const userAddress = web3?.userAddress;
+export const SalesList: React.FC<SalesListProps> = ({
+  sales: initialSales,
+  userAddress: propUserAddress,
+}) => {
+  let web3UserAddress: string | null = null;
+  try {
+    const web3 = useWeb3();
+    web3UserAddress = web3.userAddress ?? null;
+  } catch {
+    web3UserAddress = null;
+  }
+  const userAddress = (propUserAddress !== undefined ? propUserAddress : web3UserAddress) || undefined;
 
   const [decryptedData, setDecryptedData] = useState<object | null>(null);
   const [decryptError, setDecryptError] = useState<string | null>(null);
@@ -643,7 +653,7 @@ export const SalesList: React.FC<SalesListProps> = ({ sales: initialSales }) => 
       escapeCsvField(s.campaignAddress || "N/A"),
       escapeCsvField(s.saleAmount),
       escapeCsvField(s.commissionAmount),
-      escapeCsvField(s.status || (s.claimed ? "claimed" : "pending")),
+      escapeCsvField(getSaleStatus(s)),
       escapeCsvField(new Date(s.timestamp * 1000).toISOString()),
       escapeCsvField(s.txHash || "N/A"),
       escapeCsvField(s.ledgerSequence ?? "N/A"),

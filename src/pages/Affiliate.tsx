@@ -100,9 +100,9 @@ const AffiliateContent: React.FC<AffiliateProps> = ({ onBack }) => {
       case "settings":
         return <AffiliateSettings />;
       case "overview":
-        return <AffiliateOverview onNavigateTab={handleTabChange} />;
+        return <AffiliateOverview />;
       default:
-        return <AffiliateOverview onNavigateTab={handleTabChange} />;
+        return <AffiliateOverview />;
     }
   };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "../../components/ui/button";
 import {
   Dialog,
@@ -28,7 +28,7 @@ import {
   type DisputeCategory,
   type DisputeStatus,
 } from "../../utils/disputes";
-import { Web3Context } from "../../context/Web3Context";
+import { useWeb3 } from "../../hooks/useWeb3";
 
 export function handleDisputeFileProcessing(
   file: File,
@@ -128,8 +128,14 @@ export const IssueDisputeManager: React.FC<IssueDisputeManagerProps> = ({
   initialTab = "form",
   userAddress: propUserAddress,
 }) => {
-  const web3Context = useContext(Web3Context);
-  const activeUserAddress = propUserAddress ?? web3Context?.userAddress ?? null;
+  let web3UserAddress: string | null = null;
+  try {
+    const web3 = useWeb3();
+    web3UserAddress = web3.userAddress ?? null;
+  } catch {
+    web3UserAddress = null;
+  }
+  const activeUserAddress = propUserAddress ?? web3UserAddress ?? null;
   const affiliateRef = activeUserAddress || "GBBD5678";
 
   const [disputes, setDisputes] = useState<DisputeReport[]>([]);
