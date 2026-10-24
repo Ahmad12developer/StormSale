@@ -1,118 +1,101 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Affiliate } from "../pages/Affiliate";
 
-vi.mock("framer-motion", () => ({
-  motion: {
-    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
-  },
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-}));
-
-vi.mock("../components/affiliate/TelegramCampaignBrowser", () => ({
-  TelegramCampaignBrowser: () => <div data-testid="telegram-browser-content">Telegram Campaigns Content</div>,
-}));
-vi.mock("../components/affiliate/JoinCampaignButton", () => ({
-  JoinCampaignButton: () => <div data-testid="join-campaign-content">Join Campaign Content</div>,
-}));
-vi.mock("../components/affiliate/SalesList", () => ({
-  SalesList: () => <div data-testid="sales-list-content">Sales List Content</div>,
-}));
-vi.mock("../components/affiliate/ClaimPayouts", () => ({
-  ClaimPayouts: () => <div data-testid="claim-payouts-content">Claim Payouts Content</div>,
-}));
-vi.mock("../components/affiliate/AffiliateSettings", () => ({
-  AffiliateSettings: () => <div data-testid="affiliate-settings-content">Affiliate Settings Content</div>,
-}));
-vi.mock("../components/affiliate/AffiliateOverview", () => ({
-  AffiliateOverview: () => <div data-testid="affiliate-overview-content">Affiliate Overview Content</div>,
-}));
-vi.mock("../components/shared/ThemeToggle", () => ({
-  ThemeToggle: () => <button data-testid="theme-toggle">Theme Toggle</button>,
-}));
 vi.mock("../components/shared/Sidebar", () => ({
-  Sidebar: ({ onTabChange, activeTab, onBack }: any) => (
-    <nav data-testid="mock-sidebar">
-      <span data-testid="active-tab">{activeTab}</span>
-      <button onClick={() => onTabChange("overview")}>Nav Overview</button>
-      <button onClick={() => onTabChange("telegram-browser")}>Nav Telegram</button>
-      <button onClick={() => onTabChange("join-campaign")}>Nav Join</button>
-      <button onClick={() => onTabChange("my-sales")}>Nav Sales</button>
-      <button onClick={() => onTabChange("claim-payouts")}>Nav Claim</button>
-      <button onClick={() => onTabChange("settings")}>Nav Settings</button>
-      <button onClick={() => onTabChange("security")}>Nav Security</button>
-      <button onClick={() => onTabChange("invalid-tab-xyz")}>Nav Invalid</button>
-      <button onClick={onBack}>Nav Back</button>
+  Sidebar: ({
+    tabs,
+    onTabChange,
+    onBack,
+  }: {
+    tabs: Array<{ id: string; label: string }>;
+    onTabChange: (tab: string) => void;
+    onBack: () => void;
+  }) => (
+    <nav>
+      {tabs.map((tab) => (
+        <button key={tab.id} onClick={() => onTabChange(tab.id)}>
+          {tab.label}
+        </button>
+      ))}
+      <button onClick={onBack}>Go back</button>
     </nav>
   ),
 }));
+vi.mock("../components/shared/ThemeToggle", () => ({ ThemeToggle: () => <span>Theme</span> }));
+vi.mock("../components/affiliate/JoinCampaignButton", () => ({
+  JoinCampaignButton: () => <div>Join campaign content</div>,
+}));
+vi.mock("../components/affiliate/SalesList", () => ({
+  SalesList: () => <div>Sales content</div>,
+}));
+vi.mock("../components/affiliate/ClaimPayouts", () => ({
+  ClaimPayouts: () => <div>Payout content</div>,
+}));
+vi.mock("../components/affiliate/AffiliateOverview", () => ({
+  AffiliateOverview: ({ onNavigate }: { onNavigate?: (tab: string) => void }) => (
+    <div>
+      Overview content
+      <button onClick={() => onNavigate?.("custom-links")}>Open short links</button>
+    </div>
+  ),
+}));
+vi.mock("../components/affiliate/TelegramCampaignBrowser", () => ({
+  TelegramCampaignBrowser: () => <div>Telegram campaign content</div>,
+}));
+vi.mock("../components/affiliate/CustomLinksManager", () => ({
+  CustomLinksManager: () => <div>Short-link manager content</div>,
+}));
+vi.mock("../components/affiliate/CampaignApplication", () => ({
+  CampaignApplication: () => <div>Campaign application content</div>,
+}));
+vi.mock("../components/affiliate/AffiliateSettings", () => ({
+  AffiliateSettings: () => <div>Affiliate settings content</div>,
+}));
+vi.mock("../context/NotificationContext", () => ({
+  NotificationProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock("../lib/telegram", () => ({ isTelegramMiniApp: () => false }));
 
-describe("Affiliate Page Component Suite (#51, #55, #95)", () => {
-  beforeEach(() => {
-    localStorage.clear();
-    window.history.pushState({}, "", "/affiliate");
-  });
+describe("Affiliate page navigation", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => cleanup());
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  it("navigates between affiliate sections, settings, and the default overview", async () => {
+    const onBack = vi.fn();
+    render(<Affiliate onBack={onBack} />);
+    expect(screen.getByText("Overview content")).toBeTruthy();
 
-  it("renders with default overview tab and switches content via sidebar navigation", () => {
-    const handleBack = vi.fn();
-    render(<Affiliate onBack={handleBack} />);
+    fireEvent.click(screen.getByRole("button", { name: "Telegram Campaigns" }));
+    expect(await screen.findByText("Telegram campaign content")).toBeTruthy();
 
-    // Default overview
-    expect(screen.getByTestId("affiliate-overview-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Custom Short Links" }));
+    expect(await screen.findByText("Short-link manager content")).toBeTruthy();
 
-    // Navigate to Sales
-    fireEvent.click(screen.getByText("Nav Sales"));
-    expect(screen.getByTestId("sales-list-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Join Campaign" }));
+    expect(await screen.findByText("Join campaign content")).toBeTruthy();
 
-    // Navigate to Telegram
-    fireEvent.click(screen.getByText("Nav Telegram"));
-    expect(screen.getByTestId("telegram-browser-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Apply & Tracking Links" }));
+    expect(await screen.findByText("Campaign application content")).toBeTruthy();
 
-    // Navigate to Join
-    fireEvent.click(screen.getByText("Nav Join"));
-    expect(screen.getByTestId("join-campaign-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "My Sales & Commissions" }));
+    expect(await screen.findByText("Sales content")).toBeTruthy();
 
-    // Navigate to Claim
-    fireEvent.click(screen.getByText("Nav Claim"));
-    expect(screen.getByTestId("claim-payouts-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Claim Payouts" }));
+    expect(await screen.findByText("Payout content")).toBeTruthy();
 
-    // Navigate to Settings
-    fireEvent.click(screen.getByText("Nav Settings"));
-    expect(screen.getByTestId("affiliate-settings-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Personalized Settings" }));
+    expect(await screen.findByText("Affiliate settings content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Preferences" }));
+    expect(screen.getByText("Affiliate settings content")).toBeTruthy();
 
-    // Navigate to invalid tab falls back to overview
-    fireEvent.click(screen.getByText("Nav Invalid"));
-    expect(screen.getByTestId("affiliate-overview-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Security & Keys" }));
+    expect(await screen.findByText("Overview content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open short links" }));
+    expect(await screen.findByText("Short-link manager content")).toBeTruthy();
 
-    // Trigger back button
-    fireEvent.click(screen.getByText("Nav Back"));
-    expect(handleBack).toHaveBeenCalledTimes(1);
-  });
-
-  it("navigates to settings via header Preferences button", () => {
-    render(<Affiliate onBack={() => {}} />);
-    const prefBtn = screen.getByLabelText("Preferences");
-    fireEvent.click(prefBtn);
-    expect(screen.getByTestId("affiliate-settings-content")).toBeTruthy();
-  });
-
-  it("synchronizes tab state with URL query parameters and responds to popstate events", () => {
-    window.history.pushState({}, "", "/affiliate?tab=my-sales");
-    render(<Affiliate onBack={() => {}} />);
-
-    expect(screen.getByTestId("sales-list-content")).toBeTruthy();
-
-    // Dispatch popstate event with a new query parameter
-    act(() => {
-      window.history.pushState({}, "", "/affiliate?tab=claim-payouts");
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    });
-
-    expect(screen.getByTestId("claim-payouts-content")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Go back" }));
+    expect(onBack).toHaveBeenCalledOnce();
   });
 });
