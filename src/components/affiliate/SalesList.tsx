@@ -839,6 +839,7 @@ export const SalesList: React.FC<SalesListProps> = ({
                 <Search className="w-4 h-4 absolute left-3.5 top-3 text-zinc-400" />
                 <input
                   type="text"
+                  aria-label="Search ledger entries"
                   placeholder="Search by Sale ID, Campaign, Tx Hash, or Contract Address..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
